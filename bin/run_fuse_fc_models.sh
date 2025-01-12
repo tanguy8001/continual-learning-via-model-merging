@@ -136,7 +136,7 @@ layer=3
 #done
 
 #fusion_type="ot"
-fusion_type="tlp"
+fusion_type="curve"
 ot_cost_choice="weight"
 python src/tlp_model_fusion/fuse_models.py \
               --experiment_name "${prefix}_model_fusion_${fusion_type}" \
@@ -157,8 +157,8 @@ python src/tlp_model_fusion/fuse_models.py \
               --ad_hoc_sinkhorn_regularization 0 \
               --ad_hoc_initialization 0 \
               --model_path_list \
-              "FC,C:\Users\tangu\Downloads\dnn-mode-connectivity-master\dnn-mode-connectivity-master\model_A\final_model.pth" \
-              "FC,C:\Users\tangu\Downloads\dnn-mode-connectivity-master\dnn-mode-connectivity-master\model_B\final_model.pth" \
+              "FC,/home/tdieudonne/dl2/model_A/final_model.pth" \
+              "FC,/home/tdieudonne/dl2/model_B/final_model.pth" \
               #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_233/snapshots/best_val_acc_model.pth" \
               #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_82/snapshots/best_val_acc_model.pth" \
               #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_31/snapshots/best_val_acc_model.pth" \

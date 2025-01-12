@@ -55,6 +55,8 @@ class FuseModels:
         self.args = args
         self.train_init = train_init
 
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         self.base_models = []
         avg_test_acc = 0
         print(args.model_path_list)
@@ -62,7 +64,7 @@ class FuseModels:
             items = model_path.split(',')
             model_name = items[0]
             model_path = items[1]
-            state_dict = torch.load(model_path)
+            state_dict = torch.load(model_path, map_location=device)
             logging.info("Model: {}, Val Acc: {}, Test Acc: {}".format(model_path,
                                                                        state_dict['val_acc'],
                                                                        state_dict['test_acc']))
