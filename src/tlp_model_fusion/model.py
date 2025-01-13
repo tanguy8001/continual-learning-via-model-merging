@@ -30,7 +30,7 @@ class FCModel(nn.Module):
             #cur_layer = nn.ModuleList()
             #cur_layer.append(nn.Linear(self.channels[idx - 1], self.channels[idx], bias=self.bias))
             if idx + 1 < len(self.channels):
-                cur_layer.append(nn.ReLU())
+                cur_layer.append(nn.ReLU()) 
             seq_cur_layer = nn.Sequential(*cur_layer)
             self.layers.append(seq_cur_layer)
         self.layers_aggregated = nn.Sequential(*self.layers)

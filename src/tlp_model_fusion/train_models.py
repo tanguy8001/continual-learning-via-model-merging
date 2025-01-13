@@ -105,8 +105,9 @@ class Trainer:
         self.train_init = train_init
         self.trainloader, self.valloader, self.testloader = get_dataloaders(args)
         if args.model_name == 'FC':
-            #self.model = model.FCModel(input_dim=args.input_dim, hidden_dims=args.hidden_dims,
-            #                           output_dim=args.output_dim)
+            self.model = model.FCModel(input_dim=args.input_dim, hidden_dims=args.hidden_dims,
+                                       output_dim=args.output_dim)
+        elif args.model_name == 'MlpNet':
             self.model = mlpnet.MlpNetBase(input_dim=args.input_dim, num_classes=args.output_dim)
         elif args.model_name == 'Conv':
             input_channels = 1 if args.dataset_name == 'MNIST' else 3
@@ -218,6 +219,7 @@ class Trainer:
         val_acc = self.train_epoch(epoch=0, tag='val')
         test_acc = self.train_epoch(epoch=0, tag='test')
         logging.info('Validation acc:{}, Test acc:{}'.format(val_acc, test_acc))
+        return val_acc, test_acc
 
     def load_model(self):
         self.model.load_state_dict(torch.load(self.args.checkpoint_path)['model_state_dict'])

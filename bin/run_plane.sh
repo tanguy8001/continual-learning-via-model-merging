@@ -171,28 +171,28 @@ export PYTHONPATH=$PYTHONPATH:.
 
 ######### Generate Grid Plane for LSTM model #############
 
-base_model_prefix="image_lstm_128"
-layer=3
-
-python src/tlp_model_fusion/plane.py \
-          --experiment_name 'visualization' \
-	      	--dataset_name 'SplitMNIST' \
-		      --batch_size 64 \
-		      --model_name 'LSTM' \
-		      --input_dim 28 \
-		      --hidden_dims 128 \
-		      --output_dim 10 \
-		      --seed "43" \
-		      --gpu_ids '0' \
-		      --init_start "result/layer_1_dim_256_scale_1_adam/lstm_mnist/dataset_1/best_val_acc_model.pth" \
-		      --init_end "result/layer_1_dim_256_scale_1_adam/lstm_mnist/dataset_2/best_val_acc_model.pth" \
-		      --fused_model_path "result/test2_adam/lstm_256_mnist_split/layer_1/idenitity/models_1_2_reg_0.0032.pth" \
-          --permuted_model_path "result/test2_adam/lstm_256_mnist_split/layer_1/idenitity/permuted_model_2.pth" \
-          --grid_points 31 \
-          --margin_left 0.2 \
-          --margin_right 0.2 \
-          --margin_top 0.2 \
-          --margin_bottom 0.2 
+#base_model_prefix="image_lstm_128"
+#layer=3
+#
+#python src/tlp_model_fusion/plane.py \
+#          --experiment_name 'visualization' \
+#	      	--dataset_name 'SplitMNIST' \
+#		      --batch_size 64 \
+#		      --model_name 'LSTM' \
+#		      --input_dim 28 \
+#		      --hidden_dims 128 \
+#		      --output_dim 10 \
+#		      --seed "43" \
+#		      --gpu_ids '0' \
+#		      --init_start "result/layer_1_dim_256_scale_1_adam/lstm_mnist/dataset_1/best_val_acc_model.pth" \
+#		      --init_end "result/layer_1_dim_256_scale_1_adam/lstm_mnist/dataset_2/best_val_acc_model.pth" \
+#		      --fused_model_path "result/test2_adam/lstm_256_mnist_split/layer_1/idenitity/models_1_2_reg_0.0032.pth" \
+#          --permuted_model_path "result/test2_adam/lstm_256_mnist_split/layer_1/idenitity/permuted_model_2.pth" \
+#          --grid_points 31 \
+#          --margin_left 0.2 \
+#          --margin_right 0.2 \
+#          --margin_top 0.2 \
+#          --margin_bottom 0.2 
 
 
 

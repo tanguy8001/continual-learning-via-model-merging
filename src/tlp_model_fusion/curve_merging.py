@@ -4,7 +4,7 @@ This module implements a multi-layer perceptron with curve-based model merging
 for addressing catastrophic forgetting in sequential learning tasks.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Type
 import os
 from pathlib import Path
@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import models as mods
-from models import mlpnet
+from models import mlpnet, fcmodel
 import curves
 from CL.Eval import evaluate_task_accuracies
 from CL.Data import get_task_data_with_labels
@@ -29,10 +29,14 @@ class CurveFusion:
     def __init__(self, args, base_models, target_model, data):
         self.args = args
         self.base_models = base_models
-        self.target_model = target_model    # ISSUE: NOT THE SAME ANYMORE
+        self.target_model = target_model
         self.data = data
 
     def fuse(self):
+        '''
+        Directly modifies the target_model with its new weights.
+        '''
+
         logging.info("Starting curve model fusion")
         
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,9 +48,9 @@ class CurveFusion:
         #    self.data = self.data.cuda()
 
         self.target_model = curve_ensembling(
-            config=CurveConfig,
+            config=CurveConfig(),
             models=self.base_models,
-            merged_model=self.target_model,
+            target_model=self.target_model,
             train_loader=self.data['train'],
             test_loader=self.data['test'],
             device=device,
@@ -61,7 +65,10 @@ class CurveConfig:
     """Configuration for curve merging parameters."""
     base_dir: Path = Path.cwd()
     transform: str = "MLPNET"
-    model: str = "MlpNet"
+    model: str = "FCModel"
+    input_dim: int = 784
+    hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
+    output_dim: int = 10
     #model: str = "VGG16"
     epochs: int = 10
     learning_rate: float = 0.07
@@ -145,7 +152,7 @@ def copy_model_mlpnet(model: nn.Module) -> nn.Module:
 def curve_ensembling(
     config: CurveConfig,
     models: List[nn.Module],
-    merged_model,
+    target_model: nn.Module,
     train_loader: DataLoader,
     test_loader: DataLoader,
     device: str,
@@ -171,6 +178,9 @@ def curve_ensembling(
         Merged model
     """
     architecture = getattr(mods, config.model)
+    architecture.kwargs['input_dim'] = config.input_dim
+    architecture.kwargs['hidden_dims'] = config.hidden_dims
+    architecture.kwargs['output_dim'] = config.output_dim
     curve = getattr(curves, config.curve)
     
     curve_model = curves.CurveNet(
@@ -199,17 +209,17 @@ def curve_ensembling(
     # Sample weights from middle of curve
     steps = np.linspace(0.0, 1.0, config.num_points)
     middle_step = steps[len(steps) // 2]
-    fusion_weights = curve_model.weights(torch.tensor([middle_step]).to(device))
+    fusion_weights = curve_model.weights(torch.tensor([middle_step]))
     
     # Update merged model parameters
     offset = 0
-    for parameter in merged_model.parameters():
+    for parameter in target_model.parameters():
         size = np.prod(parameter.size())
         value = fusion_weights[offset:offset + size].reshape(parameter.size())
         parameter.data.copy_(torch.from_numpy(value))
         offset += size
     
-    return merged_model
+    return target_model
 
 
 def train_merging_curve(

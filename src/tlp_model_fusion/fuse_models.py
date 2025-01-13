@@ -15,11 +15,12 @@ import vgg_models
 import gw_fusion_rnn
 
 import curve_merging
-from models import mlpnet
+from models import mlpnet, fcmodel
 
 def get_model(model_name, config):
     if model_name == 'FC':
-        #return model.FCModel(config['input_dim'], config['hidden_dims'], config['output_dim'])
+        return fcmodel.FCModelBase(config['input_dim'], config['hidden_dims'], config['output_dim'])
+    elif model_name == 'MlpNet':
         return mlpnet.MlpNetBase(input_dim=config['input_dim'], num_classes=config['output_dim'])
     elif model_name == 'Conv':
         return model.ConvModel(input_channels=config['input_dim'], output_dim=config['output_dim'])
@@ -168,8 +169,6 @@ class FuseModels:
 
             CURVEFusionClass = curve_merging.CurveFusion
 
-            self.target_model = copy.deepcopy(self.base_models[0])
-
             trainloader, valloader, testloader = train_models.get_dataloaders(args)
             data = {
                 'train': trainloader,
@@ -196,7 +195,13 @@ class FuseModels:
             evaluate_args.hidden_dims = self.target_model.get_model_config()['hidden_dims']
         evaluate_args.checkpoint_path = os.path.join(self.train_init.model_path, 'fused_model.pth')
         trainer = train_models.Trainer(self.train_init, evaluate_args)
-        trainer.evaluate()
+        val_acc, test_acc = trainer.evaluate()
+        
+        model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
+        final_save_path = os.path.join(model_path, 'final_curve_fusion_model.pth')
+        config = curve_merging.CurveConfig()
+        self.save_model(self.target_model, config, config.epochs, val_acc, test_acc, final_save_path)
+
         logging.info('Evaluation done.')
 
     def save_target_model(self):
@@ -205,6 +210,15 @@ class FuseModels:
                     'config': self.target_model.get_model_config()},
                    save_path)
         logging.info('Model saved at {}'.format(save_path))
+
+    def save_model(model, config, epoch, val_acc, test_acc, save_path):
+        torch.save({
+            'epoch': epoch,
+            'val_acc': val_acc,
+            'test_acc': test_acc,
+            'model_state_dict': model.state_dict(),
+            'config': model.get_model_config()
+        }, save_path)
 
 
 def main():
