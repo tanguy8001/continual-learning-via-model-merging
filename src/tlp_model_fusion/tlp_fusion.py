@@ -152,20 +152,10 @@ class TLPFusion:
                         # cost = get_cost_using_loop(w, w_i, prev_pi_i)
                         cost = memory_safe_methods.get_cost(w, w_i, prev_pi_i)
                     else:
-                        try:
-                            diff = (w - w_i).pow(2)
-                            if is_conv:
-                                diff = diff.sum(-1).sum(-1)
-                            cost = (diff * prev_pi_i).sum(-1).sum(-1)
-                        except RuntimeError as e:
-                            error = "{}".format(e)
-                            if error.startswith("CUDA out of memory."):
-                                cost = memory_safe_methods.get_cost(w, w_i, prev_pi_i)
-                                # cost = get_cost_using_loop(w, w_i, prev_pi_i)
-                                use_loop = True
-                            else:
-                                print(error)
-                                raise ImportError(e)
+                        # Directly use the memory-safe method for computing the cost
+                        cost = memory_safe_methods.get_cost(w, w_i, prev_pi_i)
+                        use_loop = True
+
                     # Different algorithms for solving Linear equations goes here.
                     new_pi = self.ot_solver(cost)
                     pi.append(new_pi)

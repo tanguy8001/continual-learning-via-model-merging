@@ -99,6 +99,7 @@ class FuseModels:
             self.fusion_method = avg_fusion.AvgFusion(args, base_models=self.base_models,
                                                       target_model=self.target_model)
         elif args.fusion_type == 'tlp':
+            print("Performing TLP/WB merging!")
             TLPFusionClass = tlp_fusion.TLPFusion
             if args.model_name == 'vgg11':
                 TLPFusionClass = tlp_fusion.TLPFusionVGG
@@ -117,6 +118,7 @@ class FuseModels:
                 init_fusion = TLPFusionClass(args, base_models=[self.base_models[args.tlp_init_model]],
                                              target_model=self.target_model,
                                              data=data)
+                print("HERE+++++++++++++++++++++++++++++++++++++++++++")
                 init_fusion.fuse()
                 logging.info("Distillation initialization done!")
 

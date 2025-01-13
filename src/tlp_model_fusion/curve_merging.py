@@ -29,7 +29,7 @@ class CurveFusion:
     def __init__(self, args, base_models, target_model, data):
         self.args = args
         self.base_models = base_models
-        self.target_model = target_model
+        self.target_model = target_model    # ISSUE: NOT THE SAME ANYMORE
         self.data = data
 
     def fuse(self):
@@ -39,19 +39,20 @@ class CurveFusion:
 
         for model in self.base_models:
             model.to(device)
-        self.target_model.to(device)
+        #self.target_model.to(device)
         #if self.data is not None:
         #    self.data = self.data.cuda()
 
         self.target_model = curve_ensembling(
             config=CurveConfig,
             models=self.base_models,
+            merged_model=self.target_model,
             train_loader=self.data['train'],
             test_loader=self.data['test'],
             device=device,
             num_classes=self.target_model.num_classes,
             input_dim=self.target_model.input_dim,
-        )
+        ).to(device)
 
         logging.info('Curve model fusion completed.')
 
@@ -144,6 +145,7 @@ def copy_model_mlpnet(model: nn.Module) -> nn.Module:
 def curve_ensembling(
     config: CurveConfig,
     models: List[nn.Module],
+    merged_model,
     train_loader: DataLoader,
     test_loader: DataLoader,
     device: str,
@@ -187,12 +189,12 @@ def curve_ensembling(
     # Train the curve model
     train_model(config, curve_model, train_loader, test_loader, epochs=config.epochs)
     
-    # Create merged model
-    merged_model = architecture.base(
-        input_dim=input_dim, 
-        num_classes=num_classes, 
-        **architecture.kwargs
-    ).to(device)
+    ## Create merged model
+    #merged_model = architecture.base(
+    #    input_dim=input_dim, 
+    #    num_classes=num_classes, 
+    #    **architecture.kwargs
+    #).to(device)
     
     # Sample weights from middle of curve
     steps = np.linspace(0.0, 1.0, config.num_points)

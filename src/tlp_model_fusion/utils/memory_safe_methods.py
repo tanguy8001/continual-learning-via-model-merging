@@ -28,6 +28,7 @@ def get_cost(w, w_base, prev_pi_base):
                     end = n
                 w_i = w_base[:, idx:end]
                 cost_arr = []
+                #print(f"len of w: {len(w)}")
                 for w_item in w:
                     w_item = w_item.unsqueeze(0)
                     diff = (w_item - w_i).pow(2)
