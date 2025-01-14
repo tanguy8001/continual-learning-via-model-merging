@@ -7,24 +7,28 @@ export PYTHONPATH=$PYTHONPATH:.
 # base_model_prefix="mlp_sgd_models_layer_3"
 # layer=3
 
-# python src/tlp_model_fusion/plane.py \
-#           --experiment_name 'visualization' \
-# 	      	--dataset_name 'MNISTNorm' \
-# 		      --batch_size 128 \
-# 		      --model_name 'FC' \
-# 		      --input_dim 784 \
-# 		      --hidden_dims 800 400 200 \
-# 		      --output_dim 10 \
-# 		      --seed "43" \
-# 		      --gpu_ids '0' \
-# 		      --init_start "result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_348/snapshots/best_val_acc_model.pth" \
-# 		      --init_end "result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_43/snapshots/best_val_acc_model.pth" \
-# 		      --fused_model_path "result/_model_fusion_tlp/FC_MNISTNorm/runs/fusion_tlp_num_models_2_layers_3_seed_43_cost_choice_weight_solver_sinkhorn_preact_init_identity_model_0_reg_0.0005/snapshots/fused_model.pth" \
-#           --grid_points 21 \
-#           --margin_left 0.25 \
-#           --margin_right 0.25 \
-#           --margin_top 0.25 \
-#           --margin_bottom 0.25
+python src/tlp_model_fusion/plane.py \
+	--experiment_name 'visualization' \
+	--dataset_name 'MNISTNorm' \
+	--batch_size 128 \
+	--model_name 'FC' \
+	--model 'FCModel' \
+	--input_dim 784 \
+	--hidden_dims 800 400 200 \
+	--output_dim 10 \
+	--seed "43" \
+	--gpu_ids '0' \
+	--init_start "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_A/final_model.pth" \
+	--init_end "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_B/final_model.pth" \
+	--fused_model_path "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/final_curve_fusion_model.pth" \
+	--curve_ckpt "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/final_curve_model.pth" \
+	--num_bends 3 \
+	--curve="Bezier" \
+    --grid_points 21 \
+    --margin_left 0.25 \
+    --margin_right 0.25 \
+    --margin_top 0.25 \
+    --margin_bottom 0.25
 
 ######### Generate Grid Plane for Hetero MNIST ########
 

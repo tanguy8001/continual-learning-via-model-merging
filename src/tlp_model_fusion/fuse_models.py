@@ -211,7 +211,7 @@ class FuseModels:
                    save_path)
         logging.info('Model saved at {}'.format(save_path))
 
-    def save_model(model, config, epoch, val_acc, test_acc, save_path):
+    def save_model(self, model, config, epoch, val_acc, test_acc, save_path):
         torch.save({
             'epoch': epoch,
             'val_acc': val_acc,

@@ -144,6 +144,11 @@ class FCModelCurve(nn.Module):
 
         return F.log_softmax(x, dim=1)
 
+    def get_model_config(self):
+        return {'input_dim': self.channels[0],
+                'hidden_dims': self.channels[1:-1],
+                'output_dim': self.channels[-1]}
+
 
 class FCModel:
     base = FCModelBase

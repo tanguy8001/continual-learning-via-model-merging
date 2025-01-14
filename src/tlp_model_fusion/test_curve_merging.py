@@ -86,8 +86,8 @@ def test_curve_merging():
     data_path = os.path.join(os.getcwd(), "data")
     os.makedirs(data_path, exist_ok=True)
     
-    # Load data using your double_loaders function
-    from data import double_loaders  # Import your data loader
+    # Load data using double_loaders function
+    from data import double_loaders
     
     data_loaders, num_classes = double_loaders(
         dataset="MNIST",
@@ -145,7 +145,7 @@ def test_curve_merging():
         train_loader=data_loaders['trainA'],
         test_loader=data_loaders['test'],
         config=config,
-        model_path="./model_A",
+        model_path="/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_A",
         device=device,
         epochs=epochs
     )
@@ -156,7 +156,7 @@ def test_curve_merging():
         train_loader=data_loaders['trainB'],
         test_loader=data_loaders['test'],
         config=config,
-        model_path="./model_B",
+        model_path="/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_B",
         device=device,
         epochs=epochs
     )
@@ -179,7 +179,7 @@ def test_curve_merging():
         device=device,
         num_classes=num_classes,
         input_dim=input_dim
-    )
+    ).to(device)
     
     # Evaluate merged model
     merged_acc = evaluate_model(merged_model, data_loaders['test'], device)
@@ -302,7 +302,7 @@ def save_model(model, config, epoch, val_acc, save_path):
         'val_acc': val_acc,
         'test_acc': val_acc,
         'model_state_dict': model.state_dict(),
-        'config': model.get_model_config()
+        'config': model.get_model_config() 
     }, save_path)
 
 if __name__ == "__main__":

@@ -295,6 +295,9 @@ class CurveNet(Module):
                 alpha = j * 1.0 / (self.num_bends - 1)
                 weights[j].data.copy_(alpha * weights[-1].data + (1.0 - alpha) * weights[0].data)
 
+    def get_model_config(self):
+        return None
+
     '''
     Returns: model weights at step 't'
     '''

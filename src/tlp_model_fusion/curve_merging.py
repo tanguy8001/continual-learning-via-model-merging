@@ -74,6 +74,7 @@ class CurveConfig:
     learning_rate: float = 0.07
     weight_decay: float = 5e-4
     momentum: float = 0.9
+    num_classes: int = 10
     num_bends: int = 3
     curve: str = "Bezier"
     num_points: int = 61
@@ -198,6 +199,9 @@ def curve_ensembling(
     
     # Train the curve model
     train_model(config, curve_model, train_loader, test_loader, epochs=config.epochs)
+    model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
+    final_save_path = os.path.join(model_path, 'final_curve_model.pth')
+    save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
     
     ## Create merged model
     #merged_model = architecture.base(
@@ -218,6 +222,11 @@ def curve_ensembling(
         value = fusion_weights[offset:offset + size].reshape(parameter.size())
         parameter.data.copy_(torch.from_numpy(value))
         offset += size
+
+    #model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
+    #final_save_path = os.path.join(model_path, 'final_curve_fusion_model.pth')
+    #config = CurveConfig()
+    #save_model(target_model, config, config.epochs, val_acc, test_acc, final_save_path)
     
     return target_model
 
@@ -292,3 +301,28 @@ def train_merging_curve(
             break
 
     return model, task_accuracies
+
+def save_model(model, config, epoch, val_acc, test_acc, save_path):
+    torch.save({
+        'epoch': epoch,
+        'val_acc': val_acc,
+        'test_acc': test_acc,
+        'model_state_dict': model.state_dict(),
+        'config': model.get_model_config()
+    }, save_path)
+
+def evaluate_model(model, test_loader, device):
+    """Evaluate model accuracy on test set."""
+    model.eval()
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    
+    return 100 * correct / total

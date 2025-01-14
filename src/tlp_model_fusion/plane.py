@@ -34,13 +34,16 @@ from src.tlp_rnn_fusion import fuse_rnn_models
 from src.tlp_rnn_fusion import train_rnn_mnist
 from init import make_dirs
 
+from src.tlp_model_fusion import curves
+from src.tlp_model_fusion import models as mods
+from src.tlp_model_fusion.models import mlpnet, fcmodel
+from src.tlp_model_fusion.curve_merging import CurveConfig
+
 ### Load neural networks
 def load_model(model_name, model_path):
+  print(model_path)
   state_dict = torch.load(model_path)
-  if model_name in ['RNN', 'LSTM', 'rnn', 'lstm']:
-      model = fuse_rnn_models.get_model(model_name, input_dim=28, config=state_dict['config'], encoder=False)
-  else:
-      model = fuse_models.get_model(model_name, state_dict['config'])
+  model = fuse_models.get_model(model_name, state_dict['config'])
   model.load_state_dict(state_dict['model_state_dict'])
   return model 
 
@@ -89,46 +92,6 @@ def loss_func(last_output, y):
 
   return (loss(m(last_output), y))
 
-
-def test_rnn(dataloader, model, dataset_name='MNISTNorm'):
-  total = 0
-  correct = 0
-  loss = 0
-
-  #loss_logger = average_meter.AverageMeter()
-  
-  if torch.cuda.is_available():
-    model = model.cuda()
-  
-  model.eval()
-
-  for batch_idx, samples_batched in enumerate(dataloader): # samples_batched - word sentences in a batch of sentences (batch_size, 100)
-      x_batched, y_batched = samples_batched  # x_batched (bz, 80), y_batched (bz, 80, 1)
-      if dataset_name in ['MNISTNorm', 'SplitMNIST', 'MNIST']:
-          x_batched = torch.squeeze(x_batched)
-      if torch.cuda.is_available():
-          x_batched = x_batched.cuda()
-          y_batched = y_batched.cuda()
-      
-      batch_size = x_batched.size(0)
-
-      logits = model(x_batched)
-      last_logits = logits[:, -1, :] # size(batch_size, vocab_size)
-
-      batch_loss = loss_func(last_logits, y_batched)
-      loss += batch_loss
-      total += batch_size
-
-      prediction = torch.argmax(last_logits.detach(), dim=1) # size(batch_size)
-      correct += torch.sum(y_batched == prediction)
-  
-  avg_loss = loss / total
-  accuracy = 100.0 * correct / total
-  return {
-      'loss': avg_loss,
-      'accuracy': accuracy,
-  }
-
     
 
 
@@ -142,7 +105,7 @@ def main():
   parser.add_argument('--experiment_name', type=str, default='test')
   parser.add_argument('--model_name', type=str, default='FC')
   parser.add_argument('--dataset_name', type=str, default='MNIST')
-  parser.add_argument('--result_path', type=str, default='result')
+  parser.add_argument('--result_path', type=str, default='/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints')
 
   parser.add_argument('--data_path', type=str, default='./data')
   parser.add_argument('--batch_size', type=int, default=64)
@@ -157,6 +120,15 @@ def main():
   parser.add_argument('--alpha_h', type=float, default=None, nargs='+',
                       help='The weight for the hidden to hidden matrix costs')
 
+  parser.add_argument('--curve', type=str, default=None, metavar='CURVE',
+                    help='curve type to use (default: None)')
+  parser.add_argument('--curve_points', type=int, default=61, metavar='N',
+                    help='number of points on the curve (default: 61)')
+  parser.add_argument('--curve_ckpt', type=str, default=None, metavar='CKPT',
+                    help='checkpoint of the trained curve (default: None)')
+  parser.add_argument('--num_bends', type=int, default=3, metavar='N',
+                    help='number of curve bends (default: 3)')
+  parser.add_argument('--model', type=str, default='FCModel')
   parser.add_argument('--grid_points', type=int, default=21,
                       help='number of points in the grid (default: 21)')
   parser.add_argument('--margin_left', type=float, default=0.2,
@@ -202,6 +174,7 @@ def main():
   logger = logging.getLogger(__name__)
   
   args = parser.parse_args()
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
   if args.heterogeneous:
     model_name = args.experiment_name + '_' + args.model_name + '_' + 'HeteroMNIST'
@@ -225,51 +198,48 @@ def main():
     finetuned_model = load_model(args.model_name, args.finetuned_model_path)
 
     #w = [get_weight(model1), get_weight(finetuned_model), get_weight(fused_model)]
-    w = [get_weight(model1), get_weight(finetuned_model), get_weight(model2)]
+    #w = [get_weight(model1), get_weight(finetuned_model), get_weight(model2)]
     logging.info("Weight space dimentionality: {}".format(w[0].shape[0]))
   else:
     model1 = load_model(args.model_name, args.init_start)
     model2 = load_model(args.model_name, args.init_end)
     fused_model = load_model(args.model_name, args.fused_model_path)
-    permuted_model_2 = load_model(args.model_name, args.permuted_model_path)
 
-    ### Generate permuted model 2
-    if args.model_name in ['ImageRNN', 'RNN', 'rnn', 'LSTM', 'lstm']:
-      weights = []
-      for fused_model_parameter, model1_parameter in zip(fused_model.parameters(), model1.parameters()):
-        weight = 2 * fused_model_parameter - model1_parameter
-        weights.append(weight)
-
-    else:
-      weights = []
-      for i in range(1, fused_model.num_layers + 1):
-        weight = 2 * fused_model.get_layer_weights(i) - model1.get_layer_weights(i)
-        weights.append(weight)
-
-    config = fused_model.get_model_config()
-    if args.model_name in ['RNN', 'LSTM', 'rnn', 'lstm']:
-        permuted_model2 = fuse_rnn_models.get_model(args.model_name, input_dim=28, config=config, encoder=False)
-    else:
-        permuted_model2 = get_model(args.model_name, config)
-    for i, parameter in zip(range(len(weights)), permuted_model2.parameters()):
-      parameter.data.copy_(weights[i])
-    logging.info("Finish generating permuted model 2")
-
-    ### Check whether two permuted models that are generated from two different ways are the same or not
-    for parameter_1, parameter_2 in zip(permuted_model_2.parameters(), permuted_model2.parameters()):
-        print((parameter_1 - parameter_2).pow(2).sum(-1).sum(-1))
-
-
-    w = [get_weight(model1), get_weight(permuted_model_2), get_weight(model2)]
     fused_model_w = get_weight(fused_model)
     #w = [get_weight(model1), get_weight(fused_model), get_weight(model2)]
-    logging.info("Weight space dimentionality: {}".format(w[0].shape[0]))
 
-  
+  config = CurveConfig()
+  architecture = getattr(mods, args.model)
+  architecture.kwargs['input_dim'] = config.input_dim
+  architecture.kwargs['hidden_dims'] = config.hidden_dims
+  architecture.kwargs['output_dim'] = config.output_dim
+  curve = getattr(curves, args.curve)
+
+  curve_model = curves.CurveNet(
+      config.num_classes,
+      curve,
+      architecture.curve, # FCModelCurve
+      args.num_bends,
+      architecture_kwargs=architecture.kwargs,
+  )
+  curve_model.to(device)
+  checkpoint = torch.load(args.curve_ckpt)
+  curve_model.load_state_dict(checkpoint['model_state_dict'])
+
+  w = list()
+  curve_parameters = list(curve_model.net.parameters())   # List of tensors each representing a learnable param
+  # Iterate over number of bends that each correspond to a separate set of weights in the curve model
+  for i in range(args.num_bends):
+      # Extract and organize weights for each bend
+      w.append(np.concatenate([
+          p.data.cpu().numpy().ravel() for p in curve_parameters[i::args.num_bends]
+      ]))
+
+  logging.info("Weight space dimentionality: {}".format(w[0].shape[0]))
   config = model1.get_model_config()
 
   ### Generate orthonormal basises
-  u = w[2] - w[0]
+  u = w[2] - w[0]     # The two endpoints of the curve
   dx = np.linalg.norm(u)
   u /= dx
 
@@ -281,19 +251,26 @@ def main():
   bend_coordinates = np.stack([get_xy(p, w[0], u, v) for p in w])
   logging.info('The coordinates of model 1 on the plane: {}'.format(bend_coordinates[0]))
   logging.info('The coordinates of model 2 on the plane {}'.format(bend_coordinates[2]))
-  logging.info('The coordinates of permuted model 2 on the plane {}'.format(bend_coordinates[1]))
 
   fused_model_coordinates = get_xy(fused_model_w, w[0], u, v)
   logging.info('The coordinates of the fused model on the plane: {}'.format(fused_model_coordinates))
 
+  ts = np.linspace(0.0, 1.0, args.curve_points)
+  curve_coordinates = []
+  # Weights along the curve sampled at equally spaced t values, then projected
+  for t in np.linspace(0.0, 1.0, args.curve_points):
+      weights = curve_model.weights(torch.Tensor([t]).to(device)) # TODO
+      curve_coordinates.append(get_xy(weights, w[0], u, v))
+  curve_coordinates = np.stack(curve_coordinates)
+
   ### Generate the grid plane
-  trainloader, valoader, testloader = train_rnn_mnist.get_dataloaders(args)
+  trainloader, valoader, testloader = train_models.get_dataloaders(args)
+
   
-  # Test whether the function test_rnn
-  logging.info('Test accuracy of model 1:{}'.format(test_rnn(testloader, model1, args.dataset_name)))
-  logging.info('Test accuracy of model 2:{}'.format(test_rnn(testloader, model2, args.dataset_name)))
-  logging.info('Test accuracy of fused model:{}'.format(test_rnn(testloader, fused_model, args.dataset_name)))
-  logging.info('Test accuracy of permuted model 2:{}'.format(test_rnn(testloader, permuted_model2, args.dataset_name)))
+  # Test
+  logging.info('Test accuracy of model 1:{}'.format(test(testloader, model1, args.dataset_name)))
+  logging.info('Test accuracy of model 2:{}'.format(test(testloader, model2, args.dataset_name)))
+  logging.info('Test accuracy of fused model:{}'.format(test(testloader, fused_model, args.dataset_name)))
 
   G = args.grid_points
   alphas = np.linspace(0.0 - args.margin_left, 1.0 + args.margin_right, G)
@@ -309,12 +286,8 @@ def main():
 
   grid = np.zeros((G, G, 2))
   
-  if args.model_name in ['RNN', 'LSTM', 'rnn', 'lstm']:
-      base_model = fuse_rnn_models.get_model(args.model_name, input_dim=28, config=config, encoder=False)
-  else:
-      base_model = get_model(args.model_name, config)
-  if torch.cuda.is_available():
-    base_model.cuda()
+  base_model = get_model(args.model_name, config)
+  base_model.to(device)
 
   columns = ['X', 'Y', 'Train loss', 'Train error (%)', 'Test error (%)']
   logging.info("Begin to generate grid plane.")
@@ -322,21 +295,18 @@ def main():
   for i, alpha in enumerate(alphas):
     for j, beta in enumerate(betas):
       # Generate the weights of the neural networks at point (i, j)
-      p = w[0] + alpha * dx * u + beta * dy * v
+      # => Corresponds to moving in the u-v directions from w0
+      p = w[0] + alpha * dx * u + beta * dy * v   # Weight vector p = w0 ​+ α⋅dx⋅u + β⋅dy⋅v
 
       offset = 0
       for parameter in base_model.parameters():
         size = np.prod(parameter.size())
-        value = p[offset:offset+size].reshape(parameter.size())
+        value = p[offset:offset+size].reshape(parameter.size())     # Reshape p into format required by model
         parameter.data.copy_(torch.from_numpy(value))
         offset += size
 
-      if args.model_name in ['RNN', 'LSTM', 'rnn', 'lstm']:
-          tr_res = test_rnn(trainloader, base_model, args.dataset_name)
-          te_res = test_rnn(testloader, base_model, args.dataset_name)
-      else:
-          tr_res = test(trainloader, base_model, args.model_name)
-          te_res = test(testloader, base_model, args.model_name)
+      tr_res = test(trainloader, base_model, args.model_name)
+      te_res = test(testloader, base_model, args.model_name)
 
       tr_loss_v, tr_acc_v = tr_res['loss'], tr_res['accuracy']
       te_loss_v, te_acc_v = te_res['loss'], te_res['accuracy']
@@ -368,6 +338,7 @@ def main():
       os.path.join(output_path, 'plane.npz'),
       bend_coordinates = bend_coordinates,
       fused_model_coordinates = fused_model_coordinates,
+      curve_coordinates = curve_coordinates,
       alphas = alphas,
       betas = betas,
       grid = grid,
