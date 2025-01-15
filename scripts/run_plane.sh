@@ -7,14 +7,14 @@ export PYTHONPATH=$PYTHONPATH:.
 # base_model_prefix="mlp_sgd_models_layer_3"
 # layer=3
 
-python src/tlp_model_fusion/plane.py \
+python src/plane.py \
 	--experiment_name 'visualization' \
-	--dataset_name 'MNISTNorm' \
+	--dataset_name 'CIFAR10' \
 	--batch_size 128 \
 	--model_name 'FC' \
 	--model 'FCModel' \
 	--input_dim 784 \
-	--hidden_dims 800 400 200 \
+	--hidden_dims 1024 512 256 \
 	--output_dim 10 \
 	--seed "43" \
 	--gpu_ids '0' \

@@ -140,7 +140,8 @@ layer=3
 
 
 # To change for experiments: dataset_name, hidden_dims
-fusion_type="curve"
+# essayer OT avec Sinkhorn + reg 0.01
+fusion_type="ot"
 ot_cost_choice="weight"
 python src/fuse_models.py \
               --experiment_name "${prefix}_model_fusion_${fusion_type}" \
@@ -163,10 +164,6 @@ python src/fuse_models.py \
               --model_path_list \
               "FC,/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_A/final_model.pth" \
               "FC,/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints/model_B/final_model.pth" \
-              #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_233/snapshots/best_val_acc_model.pth" \
-              #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_82/snapshots/best_val_acc_model.pth" \
-              #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_31/snapshots/best_val_acc_model.pth" \
-              #"FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_786/snapshots/best_val_acc_model.pth"
 
 
 ################## Vanilla Averaging Fusion #####################

@@ -31,8 +31,8 @@ from init import make_dirs
 
 import curves
 import models as mods
-models import mlpnet, fcmodel
-curve_merging import CurveConfig
+from models import mlpnet, fcmodel
+from curve_merging import CurveConfig
 
 ### Load neural networks
 def load_model(model_name, model_path):

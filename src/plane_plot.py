@@ -18,8 +18,8 @@ import matplotlib.colors as colors
 import seaborn as sns
 
 from torch.utils.data import Subset, ConcatDataset, DataLoader
-data import double_loaders
-plane import load_model
+from data import double_loaders
+from plane import load_model
 import curves
 import models as mods
 from models import mlpnet, fcmodel

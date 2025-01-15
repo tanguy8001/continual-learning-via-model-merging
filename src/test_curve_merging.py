@@ -1,5 +1,5 @@
 """
-Training and test script for two models on a heterogeneous dataset split (MNIST/CIFAR10).
+Trains two models on a heterogeneous dataset split (MNIST or CIFAR10).
 Then merges the trained models using curve ensembling.
 Saves the checkpoint for the computed minimum-loss curve via the curve_ensembling function.
 """
@@ -93,6 +93,8 @@ def test_curve_merging():
     num_classes = 10
     test_digit = "dog"  # The digit to split on
     cifar_class = "dog"
+    transform_name = "MLPNET"
+    dataset = "CIFAR10"
     
     
     # Create data directory if it doesn't exist
@@ -203,17 +205,17 @@ def test_curve_merging():
     history['merged'].append(merged_acc)
     print(f"\nMerged Model Accuracy: {merged_acc:.2f}%")
     
-    # Plot results
-    plt.figure(figsize=(12, 6))
-    plt.plot(history['model_A'], label='Model A')
-    plt.plot(history['model_B'], label='Model B')
-    plt.axhline(y=merged_acc, color='r', linestyle='--', label='Merged Model')
-    plt.title('Model Performance During Training and After Merging')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+    ## Plot results
+    #plt.figure(figsize=(12, 6))
+    #plt.plot(history['model_A'], label='Model A')
+    #plt.plot(history['model_B'], label='Model B')
+    #plt.axhline(y=merged_acc, color='r', linestyle='--', label='Merged Model')
+    #plt.title('Model Performance During Training and After Merging')
+    #plt.xlabel('Epoch')
+    #plt.ylabel('Accuracy (%)')
+    #plt.legend()
+    #plt.grid(True)
+    #plt.show()
     
     # Detailed evaluation
     print("\nDetailed Evaluation:")

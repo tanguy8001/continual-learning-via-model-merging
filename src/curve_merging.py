@@ -62,24 +62,30 @@ class CurveConfig:
     base_dir: Path = Path.cwd()
     transform: str = "MLPNET"
     model: str = "FCModel"
-    #input_dim: int = 784
-    input_dim: int = 3072
+    dataset: str = "CIFAR10"
+    input_dim: int = 3072 if dataset == "CIFAR10" else 784
+    #hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
     #hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
     hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
     output_dim: int = 10
-    #model: str = "VGG16"
-    epochs: int = 10
+    epochs: int = 10 # epochs for the curve training, not models!
+    model_epochs: int = 20
+    model_learning_rate: float = 0.007
     learning_rate: float = 0.07
     weight_decay: float = 5e-4
     momentum: float = 0.9
     num_classes: int = 10
     num_bends: int = 3
+    num_workers: int = 2
     curve: str = "Bezier"
     num_points: int = 61
+    batch_size: int = 128
     grid_points: int = 21
     num_workers: int = 1
     fix_start: bool = True
     fix_end: bool = True
+    cifar_class: str = "dog"
+    test_digit: int = 4
 
 
 def train_model(
@@ -102,7 +108,7 @@ def train_model(
         device: Device to train on ('cpu' or 'cuda')
         learning_rate: Learning rate for SGD optimizer
     """
-    print(f"Learning rate used: {learning_rate}")
+    #print(f"Learning rate used: {learning_rate}")
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(
@@ -112,7 +118,6 @@ def train_model(
         weight_decay=config.weight_decay if config.curve is None else 0.0
     )
     
-    # TODO:implement tqdm loop
     for epoch in range(epochs):
         model.train()
         for inputs, targets in train_loader:
@@ -198,7 +203,7 @@ def curve_ensembling(
     curve_model.import_base_parameters(models[1], config.num_bends - 1)
     
     # Train the curve model
-    train_model(config, curve_model, train_loader, test_loader, epochs=config.epochs)
+    train_model(config, curve_model, train_loader, test_loader, learning_rate=config.learning_rate, epochs=config.epochs)
     model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
     final_save_path = os.path.join(model_path, 'final_curve_model.pth')
     save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
