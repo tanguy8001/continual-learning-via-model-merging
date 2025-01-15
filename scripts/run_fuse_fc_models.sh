@@ -138,15 +138,17 @@ layer=3
 #                "FC,result/${base_model_prefix}/FC_MNISTNorm/runs/debug_seed_786/snapshots/best_val_acc_model.pth"
 #done
 
+
+# To change for experiments: dataset_name, hidden_dims
 fusion_type="curve"
 ot_cost_choice="weight"
-python src/tlp_model_fusion/fuse_models.py \
+python src/fuse_models.py \
               --experiment_name "${prefix}_model_fusion_${fusion_type}" \
-              --dataset_name 'MNISTNorm' \
+              --dataset_name 'CIFAR10' \
               --batch_size 128 \
               --model_name 'FC' \
-              --input_dim 784 \
-              --hidden_dims 800 400 200 \
+              --input_dim 3072 \
+              --hidden_dims 1024 512 256 \
               --output_dim 10 \
               --num_epochs 20 \
               --seed "43" \
