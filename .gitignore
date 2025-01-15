@@ -5,6 +5,7 @@ __pycache__/
 
 # Checkpoints
 *.pt
+*.pth
 *.checkpoint
 
 # C extensions

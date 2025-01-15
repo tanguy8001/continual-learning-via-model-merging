@@ -1,10 +1,10 @@
-#  Deep Fusion Through Wasserstein Barycenters in TLp Spaces
+#  Model Merging for Continual Learning
 
 We provide code for all the experiments presented in our paper.
 
 The organization of code is as follows :
-* Source code is present in `src/tlp_model_fusion` directory.
-* Bash files required to run the experiments along with all the hyperparameters used are in the `bin` directory.
+* Source code is present in `src` directory.
+* Bash files required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
 
 ### Requirements
 
@@ -22,24 +22,21 @@ The main dependencies for running the code are
 
 Next, we provide detailed instructions on running each experiment.
 
-In general, each experiment has a bash file in `bin` directory along 
+In general, each experiment has a bash file in `scripts` directory along 
 with the hyperparameters and random seeds used in the experiment. 
 Corresponding command in the relevant bash file needs to be uncommented before running the experiment.
 For most of the code, commands and argument names are self-explanatory.
 
-
 ### Training Models
 
-First all the base models for fusion experiments needs to be trained!
-Relevant code is in `src/tlp_model_fusion/train_models.py`. 
-The model training can be done by uncommenting the specific command.
-The code for model classes are in `model.py`, `vgg_models.py` and `resnet_models.py`.
-
+First, all of the base models for fusion experiments need to be trained.
+Their hyperparameters are all located in the CurveConfig class in `src/curve_merging.py`.  
+The code for the model classes is in `src/models/fcmodel.py` and `src/models/mlpnet.py`.
 
 Running training:
-1. Check `bin/run_train_models.sh`  
-2. Identify the model to be trained and uncomment the corresponding command
-3. The results of trained models would be present in `result/<experimenet_name>/<model_name>_<dataset_name>/<run_id>`, 
+1. Check the CurveConfig class in `src/curve_merging.py` to modify the parameters and hyperparameters as you wish: model used, dataset, etc.  
+2. Then run `src/train.py`
+3. The results of the trained models would be present in `result/<experimenet_name>/<model_name>_<dataset_name>/<run_id>`, 
 where `<run_id>` is a string consisting of relevant parameters used for this training like random seed etc.
 4. Run `bash bin/run_train_models.sh`
 5. The statistics for the experiment is dumped in tensorboard. 
@@ -53,7 +50,7 @@ NOTE: We use the model with best validation accuracy for our experiments.
 All the required model training can be done using this script.
 
 
-### Fusing FC models with same architecture
+### Fusing FC models with the same architecture
 
 The relevant code for fusion is in `fuse_models.py`, `tlp_fusion.py`, `ad_hoc_ot_fusion.py` and `avg_fusion.py`.
 
