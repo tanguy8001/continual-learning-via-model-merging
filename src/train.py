@@ -202,20 +202,20 @@ def test_curve_merging_with_seeds():
         print(f"Accuracy of AVG model: {acc_merged}")
         results["AVG"].append(acc_merged)
 
-        #print("\nCurve ensembling...")
-        #curve_ensembling(
-        #    config=config,
-        #    models=[model_A, model_B],
-        #    target_model=target_model,
-        #    train_loader=fused_loader,
-        #    test_loader=data_loaders['test'],
-        #    device=device,
-        #    num_classes=config.num_classes,
-        #    input_dim=config.input_dim,
-        #)
-        #acc_merged = evaluate_model(target_model, data_loaders['test'], device)
-        #print(f"Accuracy of curve model: {acc_merged}")
-        #results["Curve"].append(acc_merged)
+        print("\nCurve ensembling...")
+        curve_ensembling(
+            config=config,
+            models=[model_A, model_B],
+            target_model=target_model,
+            train_loader=fused_loader,
+            test_loader=data_loaders['test'],
+            device=device,
+            num_classes=config.num_classes,
+            input_dim=config.input_dim,
+        )
+        acc_merged = evaluate_model(target_model, data_loaders['test'], device)
+        print(f"Accuracy of curve model: {acc_merged}")
+        results["Curve"].append(acc_merged)
 
     # Compute statistics
     stats = {

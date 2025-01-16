@@ -24,8 +24,8 @@ The organization of code is as follows :
 | **Joint Model**    | $ \pm $      | $ \pm $      | $ \pm $      |
 | **Model A**    | $ \pm $      | $35.27 \pm 34.95$      | $36.61 \pm 1.33$      |
 | **Model B**    | $ \pm $      | $35.95 \pm 0.88$      | $34.00 \pm 1.59$      |
-| **AVG**        | $ \pm $      | $ \pm $      | $9.31 \pm 1.22$       |
-| **OT**         | $ \pm $      | $ \pm $      | $9.31 \pm 1.22$       |
+| **AVG**        | $ \pm $      | $27.06 \pm 2.32$      | $9.31 \pm 1.22$       |
+| **OT**         | $ \pm $      | $27.78 \pm 1.78$      | $9.31 \pm 1.22$       |
 | **MPF (ours)** | **$ \pm $**  | **$48.93 \pm 0.43$**  | **$49.21 \pm 0.44$**  |
 
 ### Requirements
