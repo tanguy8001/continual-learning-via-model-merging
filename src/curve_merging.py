@@ -204,9 +204,9 @@ def curve_ensembling(
     
     # Train the curve model
     train_model(config, curve_model, train_loader, test_loader, learning_rate=config.learning_rate, epochs=config.epochs)
-    model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
-    final_save_path = os.path.join(model_path, 'final_curve_model.pth')
-    save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
+    # model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
+    # final_save_path = os.path.join(model_path, 'final_curve_model.pth')
+    # save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
     
     ## Create merged model
     #merged_model = architecture.base(

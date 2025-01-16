@@ -9,7 +9,7 @@ from torchvision.datasets import MNIST, CIFAR100
 class SequentialDataset:
     def __init__(
         self,
-        root: str = "./files",
+        root: str = "../data",
         n_tasks: int = 5,
         batch_size: int = 32,
         task_order: List[List[int]] = None,
@@ -109,7 +109,7 @@ class SequentialDataset:
 class SequentialMNIST(SequentialDataset):
     def __init__(
         self,
-        root: str = "./files",
+        root: str = "../data",
         n_tasks: int = 5,
         batch_size: int = 32,
         task_order: List[List[int]] = None,
@@ -117,7 +117,9 @@ class SequentialMNIST(SequentialDataset):
         super().__init__(root, n_tasks, batch_size, task_order)
 
         # Load MNIST
-        transform = transforms.ToTensor()
+        transform = transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        )
         self.train_dataset = MNIST(
             root=root, train=True, download=True, transform=transform
         )
@@ -129,40 +131,6 @@ class SequentialMNIST(SequentialDataset):
         self.train_targets = np.array(self.train_dataset.targets)
         self.test_targets = np.array(self.test_dataset.targets)
         self.n_classes = 10
-
-
-class SequentialCIFAR100(SequentialDataset):
-    def __init__(
-        self,
-        root: str = "./files",
-        n_tasks: int = 5,
-        batch_size: int = 32,
-        task_order: List[List[int]] = None,
-    ):
-        super().__init__(root, n_tasks, batch_size, task_order)
-
-        # CIFAR100 transforms
-        transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
-                ),
-            ]
-        )
-
-        # Load CIFAR100
-        self.train_dataset = CIFAR100(
-            root=root, train=True, download=True, transform=transform
-        )
-        self.test_dataset = CIFAR100(
-            root=root, train=False, download=True, transform=transform
-        )
-
-        # Convert targets to numpy for easier manipulation
-        self.train_targets = np.array(self.train_dataset.targets)
-        self.test_targets = np.array(self.test_dataset.targets)
-        self.n_classes = 100
 
 
 def get_task_data_with_labels(seq_mnist, labels) -> Tuple[DataLoader, DataLoader]:

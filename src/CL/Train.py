@@ -1,213 +1,75 @@
-from typing import List, Tuple
-from torch.utils.data import DataLoader, Dataset, Subset
+import torch.nn as nn
+import torch.optim as optim
 import torch
-import numpy as np
-import torchvision.transforms as transforms
-from torchvision.datasets import MNIST, CIFAR100
+import torch.nn.functional as F
+import os
+
+from CL.Models import *
+
+from CL.Utils import copy_model
 
 
-class SequentialDataset:
-    def __init__(
-        self,
-        root: str = "./files",
-        n_tasks: int = 5,
-        batch_size: int = 32,
-        task_order: List[List[int]] = None,
-    ):
-        """
-        Base class for sequential datasets.
 
-        Args:
-            root: Root directory for dataset storage
-            n_tasks: Number of tasks to split dataset into
-            batch_size: Batch size for dataloaders
-            task_order: Optional specific ordering of class labels for tasks
-        """
-        self.root = root
-        self.n_tasks = n_tasks
-        self.batch_size = batch_size
-        self.current_task = 0
-        self.task_order = task_order
 
-        # These should be set by child classes
-        self.train_dataset = None
-        self.test_dataset = None
-        self.train_targets = None
-        self.test_targets = None
-        self.n_classes = None
 
-    def get_joint_data(self, batch_size=None):
-        """Get data loaders for joint training (all data at once)"""
-        if batch_size is None:
-            batch_size = self.batch_size
+def train_model(model, train_loader, test_loader, epochs=10, device="cpu"):
+    """Train model and return training history"""
+    model = model.to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
 
-        train_loader = DataLoader(
-            self.train_dataset, batch_size=batch_size, shuffle=True
-        )
-        test_loader = DataLoader(
-            self.test_dataset, batch_size=batch_size, shuffle=False
-        )
-        return train_loader, test_loader
-
-    def get_task_data(self, batch_size=None) -> Tuple[DataLoader, DataLoader]:
-        """Get data loaders for current task"""
-        if batch_size is None:
-            batch_size = self.batch_size
-
-        if self.task_order:
-            # Use custom task order
-            labels = self.task_order[self.current_task]
-            return self.get_task_data_with_labels(labels, batch_size)
+    # Learning rate schedule
+    def get_lr(epoch):
+        if epoch < epochs * 0.5:
+            return 0.01
+        elif epoch < epochs * 0.9:
+            return 0.01 - (0.01 - 0.00007) * ((epoch - epochs * 0.5) / (epochs * 0.4))
         else:
-            # Default sequential order
-            classes_per_task = self.n_classes // self.n_tasks
-            start_class = self.current_task * classes_per_task
-            end_class = (self.current_task + 1) * classes_per_task
+            return 0.00007
 
-            train_mask = np.logical_and(
-                self.train_targets >= start_class, self.train_targets < end_class
-            )
-            test_mask = np.logical_and(
-                self.test_targets >= start_class, self.test_targets < end_class
-            )
+    for epoch in range(epochs):
+        # Update learning rate
+        lr = get_lr(epoch)
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
 
-            train_data = Subset(self.train_dataset, np.where(train_mask)[0])
-            test_data = Subset(self.test_dataset, np.where(test_mask)[0])
+        model.train()
+        for inputs, targets in train_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
 
-            train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-            test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-
-            return train_loader, test_loader
-
-    def get_task_data_with_labels(
-        self, labels: List[int], batch_size: int
-    ) -> Tuple[DataLoader, DataLoader]:
-        """Gets data for specific labels"""
-        train_indices = [
-            i for i, target in enumerate(self.train_targets) if target in labels
-        ]
-        test_indices = [
-            i for i, target in enumerate(self.test_targets) if target in labels
-        ]
-
-        train_subset = Subset(self.train_dataset, train_indices)
-        test_subset = Subset(self.test_dataset, test_indices)
-
-        train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
-
-        return train_loader, test_loader
-
-    def next_task(self) -> bool:
-        """Move to next task if available"""
-        if self.current_task < self.n_tasks - 1:
-            self.current_task += 1
-            return True
-        return False
+    return model
 
 
-class SequentialMNIST(SequentialDataset):
-    def __init__(
-        self,
-        root: str = "./files",
-        n_tasks: int = 5,
-        batch_size: int = 32,
-        task_order: List[List[int]] = None,
-    ):
-        super().__init__(root, n_tasks, batch_size, task_order)
-
-        # Load MNIST
-        transform = transforms.ToTensor()
-        self.train_dataset = MNIST(
-            root=root, train=True, download=True, transform=transform
-        )
-        self.test_dataset = MNIST(
-            root=root, train=False, download=True, transform=transform
-        )
-
-        # Convert targets to numpy for easier manipulation
-        self.train_targets = np.array(self.train_dataset.targets)
-        self.test_targets = np.array(self.test_dataset.targets)
-        self.n_classes = 10
-
-
-class SequentialCIFAR100(SequentialDataset):
-    def __init__(
-        self,
-        root: str = "./files",
-        n_tasks: int = 5,
-        batch_size: int = 32,
-        task_order: List[List[int]] = None,
-    ):
-        super().__init__(root, n_tasks, batch_size, task_order)
-
-        # CIFAR100 transforms
-        transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
-                ),
-            ]
-        )
-
-        # Load CIFAR100
-        self.train_dataset = CIFAR100(
-            root=root, train=True, download=True, transform=transform
-        )
-        self.test_dataset = CIFAR100(
-            root=root, train=False, download=True, transform=transform
-        )
-
-        # Convert targets to numpy for easier manipulation
-        self.train_targets = np.array(self.train_dataset.targets)
-        self.test_targets = np.array(self.test_dataset.targets)
-        self.n_classes = 100
-
-
-def get_task_data_with_labels(seq_mnist, labels) -> Tuple[DataLoader, DataLoader]:
-    """
-    Gets the data for a specific task based on the provided labels.
-
-    Args:
-        seq_mnist: Your SequentialMNIST instance.
-        labels: A list of labels to include in the task.
-
-    Returns:
-        train_loader: DataLoader for the training data of the task.
-        test_loader: DataLoader for the test data of the task (if needed).
-    """
-
-    train_indices = [
-        i
-        for i, target in enumerate(seq_mnist.train_dataset.targets)
-        if target in labels
-    ]
-    test_indices = [
-        i for i, target in enumerate(seq_mnist.test_dataset.targets) if target in labels
-    ]
-
-    train_subset = Subset(seq_mnist.train_dataset, train_indices)
-    test_subset = Subset(seq_mnist.test_dataset, test_indices)
-
-    train_loader = DataLoader(
-        train_subset, batch_size=seq_mnist.batch_size, shuffle=True
-    )
-    test_loader = DataLoader(
-        test_subset, batch_size=seq_mnist.batch_size, shuffle=False
+def save_model(model, path, args=None, epochs=None):
+    torch.save(
+        {
+            "args": vars(args) if args != None else None,
+            "epoch": args.n_epochs if args != None else None,
+            "test_accuracy": None,
+            "model_state_dict": model.state_dict(),
+        },
+        path,
     )
 
-    return train_loader, test_loader
 
+def train_models(seq_dataset, model, path, device="cpu"):
+    while True:
+        train_loader, _ = seq_dataset.get_task_data()
+        current_task = seq_dataset.current_task
 
-class TaskDataset(Dataset):
-    def __init__(self, dataset, mask):
-        self.dataset = dataset
-        self.mask = mask
-        self.indices = np.where(mask)[0]
+        current_model = copy_model(model, 784, 10)
+        current_model = train_model(
+            current_model, train_loader, None, epochs=10, device=device
+        )
+        save_model(
+            current_model,
+            os.path.join(path, f"model_{current_task}.checkpoint"),
+        )
 
-    def __getitem__(self, idx):
-        return self.dataset[self.indices[idx]]
-
-    def __len__(self):
-        return len(self.indices)
+        if not seq_dataset.next_task():
+            break
