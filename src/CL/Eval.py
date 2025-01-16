@@ -6,14 +6,12 @@ import numpy as np
 from typing import List
 import logging
 
-from CL.Data import TaskDataset
-
 
 def evaluate_model(model, data_loader, criterion, device="cpu"):
     """Evaluate model on data_loader"""
-    model.eval()
+    model = model.eval()
     total_loss = 0
-    correct = 0
+    batch_correct = 0
     total = 0
 
     with torch.no_grad():
@@ -25,10 +23,10 @@ def evaluate_model(model, data_loader, criterion, device="cpu"):
             total_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
             total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
+            batch_correct += predicted.eq(targets).sum().item()
 
     avg_loss = total_loss / total
-    accuracy = 100.0 * correct / total
+    accuracy = 100.0 * batch_correct / total
     return avg_loss, accuracy
 
 
@@ -37,49 +35,34 @@ def evaluate_full_dataset(
 ) -> tuple[float, float]:
     """Evaluate model on the full dataset"""
     # Create a dataloader for the full dataset
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    test_set = dataset.test_dataset
+    data_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
     criterion = nn.CrossEntropyLoss()
 
-    model.eval()
-    total_loss = 0
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for inputs, targets in data_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-
-            total_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-
-    avg_loss = total_loss / total
-    accuracy = 100.0 * correct / total
+    avg_loss, accuracy = evaluate_model(model, data_loader, criterion, device)
     return avg_loss, accuracy
 
 
-def evaluate_task_accuracies(model, dataset, n_tasks=5, batch_size=32, device="cpu"):
+def evaluate_task_accuracies(model, seq_data, n_tasks=5, batch_size=32, device="cpu"):
     """Evaluate model accuracy on each task separately"""
-    n_classes_per_task = 10 // n_tasks
+
     task_accuracies = []
 
-    for task in range(n_tasks):
-        start_class = task * n_classes_per_task
-        end_class = (task + 1) * n_classes_per_task
+    seq_data.current_task = 0
 
-        # Create mask for current task's classes
-        targets = np.array(dataset.targets)
-        mask = np.logical_and(targets >= start_class, targets < end_class)
-        task_dataset = TaskDataset(dataset, mask)
+    total_accuracy = 0
 
-        # Evaluate on task dataset
-        _, accuracy = evaluate_full_dataset(model, task_dataset, batch_size, device)
+    for task in range(seq_data.n_tasks):
+        _, test_loader = seq_data.get_task_data()
+        _, accuracy = evaluate_model(model, test_loader, nn.CrossEntropyLoss(), device)
         task_accuracies.append(accuracy)
+        seq_data.next_task()
 
-    return task_accuracies
+        total_accuracy += (
+            accuracy * len(test_loader.dataset) / len(seq_data.test_dataset)
+        )
+
+    return task_accuracies, total_accuracy
 
 
 def evaluate_task_accuracies_custom_order(
