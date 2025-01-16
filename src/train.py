@@ -185,7 +185,7 @@ def test_curve_merging_with_seeds():
                                            target_model=target_model_ot,
                                            data=data)
         fusion_method.fuse()
-        acc_merged = evaluate_model(target_model, data_loaders['test'], device)
+        acc_merged = evaluate_model(target_model_ot, data_loaders['test'], device)
         print(f"Accuracy of OT model: {acc_merged}")
         results["OT"].append(acc_merged)
 
@@ -198,24 +198,24 @@ def test_curve_merging_with_seeds():
         fusion_method = avg_fusion.AvgFusion(args, base_models=[model_A, model_B],
                                                     target_model=target_model_avg)
         fusion_method.fuse()
-        acc_merged = evaluate_model(target_model, data_loaders['test'], device)
+        acc_merged = evaluate_model(target_model_avg, data_loaders['test'], device)
         print(f"Accuracy of AVG model: {acc_merged}")
         results["AVG"].append(acc_merged)
 
-        print("\nCurve ensembling...")
-        curve_ensembling(
-            config=config,
-            models=[model_A, model_B],
-            target_model=target_model,
-            train_loader=fused_loader,
-            test_loader=data_loaders['test'],
-            device=device,
-            num_classes=config.num_classes,
-            input_dim=config.input_dim,
-        )
-        acc_merged = evaluate_model(target_model, data_loaders['test'], device)
-        print(f"Accuracy of curve model: {acc_merged}")
-        results["Curve"].append(acc_merged)
+        #print("\nCurve ensembling...")
+        #curve_ensembling(
+        #    config=config,
+        #    models=[model_A, model_B],
+        #    target_model=target_model,
+        #    train_loader=fused_loader,
+        #    test_loader=data_loaders['test'],
+        #    device=device,
+        #    num_classes=config.num_classes,
+        #    input_dim=config.input_dim,
+        #)
+        #acc_merged = evaluate_model(target_model, data_loaders['test'], device)
+        #print(f"Accuracy of curve model: {acc_merged}")
+        #results["Curve"].append(acc_merged)
 
     # Compute statistics
     stats = {
