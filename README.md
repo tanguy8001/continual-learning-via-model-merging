@@ -6,7 +6,7 @@ The organization of code is as follows :
 * Source code is present in `src` directory.
 * Bash files required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
 
-* Our model merging results:
+Our model merging results:
 
 
 |  ***MNIST***       | **MLPNet**           | **MLPLarge**         | **MLPHuge**          |
