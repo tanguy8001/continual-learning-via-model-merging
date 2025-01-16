@@ -9,7 +9,7 @@ The organization of code is as follows :
 * Our model merging results:
 
 
-|  **MNIST**         | **MLPNet**           | **MLPLarge**         | **MLPHuge**          |
+|  ***MNIST***       | **MLPNet**           | **MLPLarge**         | **MLPHuge**          |
 |----------------|-----------------------|-----------------------|-----------------------|
 | **Joint Model**    | $ \pm $      | $ \pm $      | $ \pm $      |
 | **Model A**    | $91.68 \pm 0.65$      | $92.11 \pm 0.36$      | $ \pm $      |
@@ -19,7 +19,7 @@ The organization of code is as follows :
 | **MPF (ours)** | **$97.32 \pm 0.07$**  | **$97.52 \pm 0.11$**  | **$ \pm $**  |
 
 
-| **CIFAR-10**       | **MLPNet**            | **MLPLarge**         | **MLPHuge**          |
+| ***CIFAR-10***     | **MLPNet**            | **MLPLarge**         | **MLPHuge**          |
 |----------------|-----------------------|-----------------------|-----------------------|
 | **Joint Model**    | $ \pm $      | $ \pm $      | $ \pm $      |
 | **Model A**    | $ \pm $      | $ \pm $      | $36.61 \pm 1.33$      |
