@@ -4,8 +4,7 @@ We provide code for all the experiments presented in our paper.
 
 The organization of code is as follows :
 * Source code is present in `src` directory.
-* Bash files\notebooks required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
-  
+* Bash files required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
 
 * Our model merging results:
 
@@ -13,11 +12,11 @@ The organization of code is as follows :
 |  ***MNIST***       | **MLPNet**           | **MLPLarge**         | **MLPHuge**          |
 |----------------|-----------------------|-----------------------|-----------------------|
 | **Joint Model**    | $ \pm $      | $ \pm $      | $ \pm $      |
-| **Model A**    | $91.68 \pm 0.65$      | $92.11 \pm 0.36$      | $ \pm $      |
-| **Model B**    | $87.56 \pm 0.21$      | $87.67 \pm 0.27$      | $ \pm $      |
-| **AVG**        | $81.30 \pm 1.87$      | $85.75 \pm 0.41$      | $ \pm $       |
-| **OT**         | $80.27 \pm 2.06$      | $85.42 \pm 0.56$      | $ \pm $       |
-| **MPF (ours)** | **$97.32 \pm 0.07$**  | **$97.52 \pm 0.11$**  | **$ \pm $**  |
+| **Model A**    | $91.68 \pm 0.65$      | $92.11 \pm 0.36$      | $91.92 \pm 0.66$      |
+| **Model B**    | $87.56 \pm 0.21$      | $87.67 \pm 0.27$      | $87.81 \pm 0.15$      |
+| **AVG**        | $81.30 \pm 1.87$      | $85.75 \pm 0.41$      | $86.19 \pm 0.27$       |
+| **OT**         | $80.27 \pm 2.06$      | $85.42 \pm 0.56$      | $85.96 \pm 0.36$       |
+| **MPF (ours)** | **$97.32 \pm 0.07$**  | **$97.52 \pm 0.11$**  | **$97.76 \pm 0.07$**  |
 
 
 | ***CIFAR-10***     | **MLPNet**            | **MLPLarge**         | **MLPHuge**          |
@@ -25,8 +24,8 @@ The organization of code is as follows :
 | **Joint Model**    | $ \pm $      | $ \pm $      | $ \pm $      |
 | **Model A**    | $ \pm $      | $35.27 \pm 34.95$      | $36.61 \pm 1.33$      |
 | **Model B**    | $ \pm $      | $35.95 \pm 0.88$      | $34.00 \pm 1.59$      |
-| **AVG**        | $ \pm $      | $27.06 \pm 2.32$      | $9.31 \pm 1.22$       |
-| **OT**         | $ \pm $      | $27.78 \pm 1.78$      | $9.31 \pm 1.22$       |
+| **AVG**        | $ \pm $      | $27.06 \pm 2.32$      | $ \pm $       |
+| **OT**         | $ \pm $      | $27.78 \pm 1.78$      | $ \pm $       |
 | **MPF (ours)** | **$ \pm $**  | **$48.93 \pm 0.43$**  | **$49.21 \pm 0.44$**  |
 
 ### Requirements
