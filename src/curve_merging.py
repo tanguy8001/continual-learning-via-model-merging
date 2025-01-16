@@ -65,11 +65,11 @@ class CurveConfig:
     dataset: str = "CIFAR10"
     input_dim: int = 3072 if dataset == "CIFAR10" else 784
     #hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
-    #hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
-    hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
+    hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
+    #hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
     output_dim: int = 10
     epochs: int = 10 # epochs for the curve training, not models!
-    model_epochs: int = 20
+    model_epochs: int = 10
     model_learning_rate: float = 0.007
     learning_rate: float = 0.07
     weight_decay: float = 5e-4
