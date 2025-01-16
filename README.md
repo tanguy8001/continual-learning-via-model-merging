@@ -4,7 +4,8 @@ We provide code for all the experiments presented in our paper.
 
 The organization of code is as follows :
 * Source code is present in `src` directory.
-* Bash files required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
+* Bash files\notebooks required to run some experiments along with all the hyperparameters used are in the `scripts` directory.
+  
 
 * Our model merging results:
 
@@ -75,4 +76,4 @@ All the required model training and merging can be done using this script.
 
 ### Performing Continual Learning
 
-TODO
+For CL the notebook setup in `scripts` directory already has the experiments with cells executed. 
