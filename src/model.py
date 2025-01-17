@@ -1,12 +1,14 @@
+'''
+Only used in train_models.py
+FCModel here is the same as in src/models/fcmodel.py
+'''
+
 import torch
 import torch.nn.functional as F
 import numpy as np
 
 from torch import nn
 
-#from src.tlp_model_fusion.utils import hook
-
-# TO DELETE
 
 class FCModel(nn.Module):
     """

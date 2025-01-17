@@ -1,3 +1,7 @@
+'''
+The main training and fusion script. To perform a single training, simply set SEEDS to a single seed of your choice.
+'''
+
 import os
 import csv
 import torch
