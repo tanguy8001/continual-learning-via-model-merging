@@ -79,7 +79,7 @@ All the required model training and merging can be done using this script.
 
 For CL the notebook setup in `scripts` directory already has the experiments with cells executed. 
 
-##Acknowledgements:
+## Acknowledgements:
 
 We thank the authors of the "Loss Surfaces, Mode Connectivity, and Fast Ensembling of DNNs" and "Wasserstein Barycenter-based Model Fusion and Linear Mode Connectivity of Neural Networks" papers for sharing their code. 
 From the first paper, we reused their minimum-loss curve finding algorithm to deduce our merged model. From the second paper, we reused their implementation of OT.
