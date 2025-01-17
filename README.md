@@ -28,6 +28,8 @@ Our model merging results:
 | **OT**         | $25.29 \pm 1.04$      | $27.78 \pm 1.78$      | $27.87 \pm 0.90$      |
 | **MPF (ours)** | **$48.02 \pm 0.25$**  | **$48.93 \pm 0.43$**  | **$49.62 \pm 0.39$**  |
 
+Our analysis reveals that MPF effectively synthesizes knowledge from both Model A and Model B, demonstrating robust integration without the catastrophic forgetting observed in the two baseline methods.
+
 ### Requirements
 
 The main dependencies for running the code are
