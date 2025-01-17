@@ -1,3 +1,8 @@
+'''
+DO NOT USE FOR TRAINING BASE MODELS!!!
+This class is a legacy class for OT.
+'''
+
 import argparse
 import logging
 import numpy as np
@@ -276,6 +281,8 @@ def main():
                         choices=['tanh', 'relu'])
 
     args = parser.parse_args()
+
+    print("DO NOT USE THIS CLASS TO TRAIN BASE MODELS. THIS IS A LEGACY CLASS USED FOR OT DEPENDENCIES.")
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
     args.gpu_id_list = [int(s) for s in args.gpu_ids.split(',')]
