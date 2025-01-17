@@ -78,3 +78,28 @@ All the required model training and merging can be done using this script.
 ### Performing Continual Learning
 
 For CL the notebook setup in `scripts` directory already has the experiments with cells executed. 
+
+Acknowledgements:
+
+We thank the authors of the "Loss Surfaces, Mode Connectivity, and Fast Ensembling of DNNs" and "Wasserstein Barycenter-based Model Fusion and Linear Mode Connectivity of Neural Networks" papers for sharing their code. 
+From the first paper, we reused their minimum-loss curve finding algorithm to deduce our merged model. From the second paper, we reused their implementation of OT.
+
+@misc{garipov2018losssurfacesmodeconnectivity,
+      title={Loss Surfaces, Mode Connectivity, and Fast Ensembling of DNNs}, 
+      author={Timur Garipov and Pavel Izmailov and Dmitrii Podoprikhin and Dmitry Vetrov and Andrew Gordon Wilson},
+      year={2018},
+      eprint={1802.10026},
+      archivePrefix={arXiv},
+      primaryClass={stat.ML},
+      url={https://arxiv.org/abs/1802.10026}, 
+}
+
+@misc{akash2022wassersteinbarycenterbasedmodelfusion,
+      title={Wasserstein Barycenter-based Model Fusion and Linear Mode Connectivity of Neural Networks}, 
+      author={Aditya Kumar Akash and Sixu Li and Nicolás García Trillos},
+      year={2022},
+      eprint={2210.06671},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2210.06671}, 
+}
