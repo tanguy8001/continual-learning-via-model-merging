@@ -18,8 +18,6 @@ from CL.Eval import evaluate_task_accuracies
 from CL.Data import get_task_data_with_labels
 import logging
 
-#TODO: renommer curve_fusion.py 
-
 class CurveFusion:
 
     def __init__(self, args, base_models, target_model, data):
@@ -62,11 +60,11 @@ class CurveConfig:
     base_dir: Path = Path.cwd()
     transform: str = "MLPNET"
     model: str = "FCModel"
-    dataset: str = "MNIST"
+    dataset: str = "CIFAR10"
     input_dim: int = 3072 if dataset == "CIFAR10" else 784
-    #hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
+    hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
     #hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
-    hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
+    #hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
     output_dim: int = 10
     epochs: int = 10 # epochs for the curve training, not models!
     model_epochs: int = 10
@@ -204,9 +202,9 @@ def curve_ensembling(
     
     # Train the curve model
     train_model(config, curve_model, train_loader, test_loader, learning_rate=config.learning_rate, epochs=config.epochs)
-    # model_path = "/home/tdieudonne/dl3/src/checkpoints"
-    # final_save_path = os.path.join(model_path, 'final_curve_model.pth')
-    # save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
+    model_path = "/home/tdieudonne/dl3/src/checkpoints"
+    final_save_path = os.path.join(model_path, 'final_curve_model.pth')
+    save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
     
     ## Create merged model
     #merged_model = architecture.base(
