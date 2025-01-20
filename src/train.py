@@ -23,6 +23,7 @@ from curve_merging import (
     curve_ensembling,
     CurveConfig
 )
+from fuse_models import get_activation_data
 
 SEEDS = range(5)
 
@@ -80,7 +81,7 @@ def test_curve_merging_with_seeds():
     parser.add_argument('--model_weights', default=None, type=float, nargs='+',
                         help='Comma separated list of weights for each model in fusion')
 
-    parser.add_argument('--ad_hoc_cost_choice', type=str, default='weight',
+    parser.add_argument('--ad_hoc_cost_choice', type=str, default='activation',
                         choices=['weight', 'activation'])
     parser.add_argument('--ad_hoc_ot_solver', type=str, default='emd',
                         choices=['sinkhorn', 'emd'])
@@ -98,7 +99,7 @@ def test_curve_merging_with_seeds():
     print(f"Using device: {device}")
 
     # Configuration
-    results = {"Model A": [], "Model B": [], "OT": [], "Curve": [], "AVG": []}
+    results = {"Joint model": [], "Model A": [], "Model B": [], "OT": [], "Curve": [], "AVG": []}
     config = CurveConfig()
 
     data_path = os.path.join(os.getcwd(), "data")
@@ -143,6 +144,26 @@ def test_curve_merging_with_seeds():
             hidden_dims=config.hidden_dims,
             output_dim=config.num_classes,
         ).to(device)
+        joint_model = fcmodel.FCModelBase(
+            input_dim=config.input_dim,
+            hidden_dims=config.hidden_dims,
+            output_dim=config.num_classes,
+        ).to(device)
+
+        # Train the joint model
+        print("\nTraining the joint model...")
+        train_and_evaluate_model(
+            model=joint_model,
+            train_loader=fused_loader,
+            test_loader=data_loaders['test'],
+            config=config,
+            model_path=f"./checkpoints/seed_{seed}/joint_model",
+            device=device,
+            epochs=config.model_epochs,
+        )
+        acc_joint = evaluate_model(joint_model, data_loaders["test"], device)
+        print(f"Accuracy of the joint model: {acc_joint}")
+        results["Joint model"].append(acc_joint)
 
         # Train and evaluate Model A
         print("\nTraining Model A...")
@@ -184,7 +205,11 @@ def test_curve_merging_with_seeds():
         output_dim=config.num_classes,
         ).to(device)
         OTFusionClass = ad_hoc_ot_fusion.OTFusion
-        data = None
+        if args.ad_hoc_cost_choice == "activation":
+            data = get_activation_data(args)
+        else:
+            data = None
+        print(f"Using {args.ad_hoc_cost_choice} as the cost choice for OT.")
         fusion_method = OTFusionClass(args, base_models=[model_A, model_B],
                                            target_model=target_model_ot,
                                            data=data)
@@ -223,6 +248,7 @@ def test_curve_merging_with_seeds():
 
     # Compute statistics
     stats = {
+        "Joint model": (np.mean(results["Joint model"]), np.std(results["Joint model"])),
         "Model A": (np.mean(results["Model A"]), np.std(results["Model A"])),
         "Model B": (np.mean(results["Model B"]), np.std(results["Model B"])),
         "Curve": (np.mean(results["Curve"]), np.std(results["Curve"])),
