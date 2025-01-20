@@ -40,6 +40,7 @@ The main dependencies for running the code are
 * numpy
 * Python Optimal Transport (POT)
 * tensorboard (from tensorflow to check logs)
+* for CL you need requirements from https://github.com/sidak/otfusion
 
 
 ## Running Experiments
