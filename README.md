@@ -66,8 +66,7 @@ To choose the type of fusion, just change the `fusion_type` variable with one of
 `input_dim` should be 3072 for CIFAR-10 and 784 for MNIST.
 `hidden_dims` should be `400, 200, 100` for MLPNet, `800, 400, 200` for MLPLarge and `1024, 512, 256` for MLPHuge.
 `model_path_list` should contain pairs of strings `{model_architecture}, model_checkpoint_path` that represent each model you want to merge. 
-5. The statistics for the experiment are dumped in the tensorboard, the `model_accuracies.csv` file, and the terminal. 
-Access the tensorboard using `tensorboard --logdir <logdir> --port 6006`
+5. The statistics for the experiment are dumped in the `model_accuracies.csv` file, and the terminal. 
 
 The model with best validation accuracy is saved as `best_val_acc_model.pth`, 
 while the final model at the end of training epoch is saved as `final_model.pth`.
