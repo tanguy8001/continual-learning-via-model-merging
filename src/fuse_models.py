@@ -77,7 +77,7 @@ class FuseModels:
                                                       target_model=self.target_model)
 
         elif args.fusion_type == 'ot':
-            print("Performing OT merging!")
+            print(f"Performing OT merging, using the {args.ad_hoc_cost_choice} cost choice!")
             OTFusionClass = ad_hoc_ot_fusion.OTFusion
             if args.ad_hoc_cost_choice == 'activation':
                 data = get_activation_data(args)
@@ -206,7 +206,7 @@ def main():
                         choices=[None, 'identity', 'distill'])
     parser.add_argument('--tlp_init_model', type=int, default=None)
 
-    parser.add_argument('--ad_hoc_cost_choice', type=str, default='weight',
+    parser.add_argument('--ad_hoc_cost_choice', type=str, default='activation',
                         choices=['weight', 'activation'])
     parser.add_argument('--ad_hoc_ot_solver', type=str, default='sinkhorn',
                         choices=['sinkhorn', 'emd'])
