@@ -81,5 +81,5 @@ For CL the notebook setup in scripts directory already has the experiments with 
 
 ## Acknowledgements:
 
-We thank the authors of the "Loss Surfaces, Mode Connectivity, and Fast Ensembling of DNNs" and "Wasserstein Barycenter-based Model Fusion and Linear Mode Connectivity of Neural Networks" papers for sharing their code. 
-From the first paper, we reused their minimum-loss curve finding algorithm to deduce our merged model. From the second paper, we reused their implementation of OT.
+We thank the authors of the "Loss Surfaces, Mode Connectivity, and Fast Ensembling of DNNs" and "Wasserstein Barycenter-based Model Fusion and Linear Mode Connectivity of Neural Networks" as well as "Model Fusion via Optimal Transport" papers for sharing their code. 
+From the first paper, we reused their minimum-loss curve finding algorithm to deduce our merged model. From the second and third papers, we reused their implementation of OT.
