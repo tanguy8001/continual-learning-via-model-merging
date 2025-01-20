@@ -63,9 +63,9 @@ Running training and fusion:
 3. The results of the trained models are located in `checkpoints/seed_{seed}/<model_{A or B}>/final_model.pth`.
 4. If you already have the checkpoints of the base models and just want to merge and saved the fusion model, use `bash scripts/run_fuse_fc_models.sh`. 
 To choose the type of fusion, just change the fusion_type variable with one of "ot", "avg", "curve".
-`input_dim` should be 3072 for CIFAR-10 and 784 for MNIST.
-`hidden_dims` should be 400, 200, 100 for MLPNet, 800, 400, 200 for MLPLarge and 1024, 512, 256 for MLPHuge.
-`model_path_list` should contain pairs of strings `{model_architecture}, model_checkpoint_path` that represent each model you want to merge. 
+- `input_dim` should be 3072 for CIFAR-10 and 784 for MNIST.
+- `hidden_dims` should be 400, 200, 100 for MLPNet, 800, 400, 200 for MLPLarge and 1024, 512, 256 for MLPHuge.
+- `model_path_list` should contain pairs of strings `{model_architecture}, model_checkpoint_path` that represent each model you want to merge. 
 5. The statistics for the experiment are dumped in the `model_accuracies.csv` file, and the terminal. 
 
 The model with best validation accuracy is saved as `best_val_acc_model.pth`, 
