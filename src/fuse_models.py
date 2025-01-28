@@ -119,10 +119,10 @@ class FuseModels:
         trainer = train_models.Trainer(self.train_init, evaluate_args)
         val_acc, test_acc = trainer.evaluate()
         
-        model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
-        final_save_path = os.path.join(model_path, 'final_curve_fusion_model.pth')
-        config = curve_merging.CurveConfig()
-        self.save_model(self.target_model, config, config.epochs, val_acc, test_acc, final_save_path)
+        #model_path = "/home/tdieudonne/dl3/src/tlp_model_fusion/checkpoints"
+        #final_save_path = os.path.join(model_path, 'final_curve_fusion_model.pth')
+        #config = curve_merging.CurveConfig()
+        #self.save_model(self.target_model, config, config.epochs, val_acc, test_acc, final_save_path)
 
         logging.info('Evaluation done.')
 
