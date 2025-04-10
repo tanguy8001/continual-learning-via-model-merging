@@ -60,7 +60,8 @@ class CurveConfig:
     base_dir: Path = Path.cwd()
     transform: str = "MLPNET"
     model: str = "FCModel"
-    dataset: str = "CIFAR10"
+    dataset: str = "MNIST"
+    #"CIFAR10"
     input_dim: int = 3072 if dataset == "CIFAR10" else 784
     hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
     #hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])

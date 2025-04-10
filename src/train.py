@@ -25,7 +25,7 @@ from curve_merging import (
 )
 from fuse_models import get_activation_data
 
-SEEDS = range(5)
+SEEDS = range(1)
 
 def test_curve_merging_with_seeds():
     parser = argparse.ArgumentParser()

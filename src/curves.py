@@ -312,6 +312,7 @@ class CurveNet(Module):
         self.l2 = sum(module.l2 for module in self.curve_modules)
 
     def forward(self, input, t=None):
+        # l(θ) =∫_0^1 L(φ_θ(t)) dt = E_t∼U(0,1)[L(φ_θ(t))]
         if t is None:
             t = input.data.new(1).uniform_()
         coeffs_t = self.coeff_layer(t)

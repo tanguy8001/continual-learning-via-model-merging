@@ -225,7 +225,7 @@ def main():
   logging.info("Weight space dimentionality: {}".format(w[0].shape[0]))
   config = model1.get_model_config()
 
-  ### Generate orthonormal basises
+  ### Generate orthonormal basis
   u = w[2] - w[0]     # The two endpoints of the curve
   dx = np.linalg.norm(u)
   u /= dx
@@ -261,7 +261,7 @@ def main():
 
   G = args.grid_points
   alphas = np.linspace(0.0 - args.margin_left, 1.0 + args.margin_right, G)
-  betas = np.linspace(0.0 - args.margin_bottom, 1.0 + args.margin_top, G)
+  betas = np.linspace(0.0 - args.margin_bottom, 1.0 + args.margin_top, G) 
 
   tr_loss = np.zeros((G, G))
   tr_acc = np.zeros((G, G))
