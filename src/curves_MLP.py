@@ -7,6 +7,9 @@ from torch.nn.modules.utils import _pair
 import torch.nn as nn
 import torch.optim as optim
 import copy
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from torch.nn.utils.stateless import functional_call
+from collections import OrderedDict
 
 
 class CurveMLP(Module):
@@ -25,52 +28,38 @@ class CurveMLP(Module):
             nn.Linear(hidden_dim, out_features, bias=bias)
         )
 
-    def forward(self, t: float, W1: torch.Tensor, W2: torch.Tensor):
+    def forward(self,
+                t: float,
+                w0: torch.Tensor,   # shape (num_params,)
+                w1: torch.Tensor    # shape (num_params,)
+               ) -> torch.Tensor:
         """
-        t: Python float scalar in [0,1]
+        Returns:
+          w_interp: torch.Tensor of shape (num_params,)
+                     = (1−t)*w0 + t*w1 + t*(1−t)*MLP([ (1−t)*w0 + t*w1, t ])
         """
-        # Convert t to tensor and ensure it's on the right device
-        t_tensor = torch.tensor(t, dtype=W1.dtype, device=W1.device)
-        
-        # Unroll both weight matrices into vectors
-        W1_unrolled = W1.view(-1)  # shape (total_params,)
-        W2_unrolled = W2.view(-1)  
-        
-        # Linear interpolation between unrolled weights
-        lin = (1.0 - t_tensor) * W1_unrolled + t_tensor * W2_unrolled
-        
-        # Create t_broadcast with correct shape
-        t_broadcast = t_tensor.expand(1)  # shape (1,)
-        
-        # Concatenate unrolled weights with t
-        mlp_in = torch.cat([W1_unrolled, W2_unrolled, t_broadcast], dim=0)  # shape (2*total_params + 1,)
-        
-        # Get correction from MLP and scale by t*(1-t)
-        corr_unrolled = (t_tensor * (1.0 - t_tensor)) * self.mlp(mlp_in)
-        
-        # Reshape correction back to original matrix shape
-        corr = corr_unrolled.view(W1.shape)
-        
-        # Reshape linear interpolation back to matrix shape and add correction
-        return lin.view(W1.shape) + corr
+        t = w0.new_tensor(t)  # same dtype & device
+        w0_flat = w0.view(-1)
+        w1_flat = w1.view(-1)
+        lin = (1.0 - t) * w0_flat + t * w1_flat        # shape (num_params,)
 
-    def interpolate_weights(self, model1, model2, t):
-        new_model = copy.deepcopy(model1)
-        # 1) flatten *all* parameters of both models
-        flat1 = torch.cat([p.view(-1) for p in model1.parameters()])
-        flat2 = torch.cat([p.view(-1) for p in model2.parameters()])
-    
-        flat_interp = self.forward(float(t), flat1, flat2)
-    
-        # 3) split and write back into new_model
-        offset = 0
-        for p in new_model.parameters():
-            n = p.numel()
-            chunk = flat_interp[offset: offset + n]
-            p.data.copy_(chunk.view_as(p))
-            offset += n
-    
-        return new_model
+        t_vec  = t.unsqueeze(0)                 # (1,)
+        mlp_in = torch.cat([w0_flat, w1_flat, t_vec], dim=0)  # (2*num_params + 1,)
+
+        corr = self.mlp(mlp_in) * (t * (1.0 - t))  # shape (num_params,)
+        return lin + corr
+
+
+    def get_model_weights(self, model: Module):
+        sd = model.state_dict()
+        all_weights = torch.cat([
+            v.view(-1)
+            for k, v in sd.items()
+            if "weight" in k
+        ])
+        return all_weights
+
+
 
     def fit(self, train_loader, test_loader, config, model1: Module, model2: Module, device="cpu"):
         self.to(device)
@@ -84,6 +73,9 @@ class CurveMLP(Module):
 
         # Define interpolation points
         interpolation_points = torch.tensor([0.2, 0.4, 0.6, 0.8, 1.0], device=device)
+        flat1 = parameters_to_vector(model1.parameters())
+        flat2 = parameters_to_vector(model2.parameters())
+        specs = [(n, p.numel()) for n, p in model1.named_parameters()]
 
         for epoch in range(config.epochs):
             # Training phase
@@ -99,17 +91,17 @@ class CurveMLP(Module):
                 
                 # Initialize batch loss
                 batch_loss = 0.0
-                
+                interpolation_points =  torch.tensor([0.5])
+                # interpolation_points =  torch.rand(6, device=device)
                 # For each interpolation point
                 for t in interpolation_points:
-                    # Get the interpolated model
-                    interpolated_model = self.interpolate_weights(model1, model2, t)
-                    interpolated_model.to(device)
-                    
-                    # Forward pass through interpolated model
-                    outputs = interpolated_model(inputs)
-                    loss = criterion(outputs, targets)
+                    # Get the interpolated weights and perform forward pass in one go
+                    w_interp = self(t, flat1, flat2)
+                    interp_state = build_state_dict(w_interp, specs, model1)
+                    outputs    = functional_call(model1, interp_state, (inputs,))
+                    loss       = criterion(outputs, targets)
                     batch_loss += loss
+
                     
                     # Calculate accuracy
                     _, predicted = outputs.max(1)
@@ -133,28 +125,28 @@ class CurveMLP(Module):
             accuracy = 100. * total_correct / total_samples
             print(f'Epoch: {epoch}, Average Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
-            # Validation phase
-            val_loss = 0.0
-            val_correct = 0
-            val_total = 0
-            
-            with torch.no_grad():
-                for inputs, targets in test_loader:
-                    inputs, targets = inputs.to(device), targets.to(device)
-                    
-                    # For each interpolation point
-                    for t in interpolation_points:
-                        interpolated_model = self.interpolate_weights(model1, model2, t)
-                        interpolated_model.to(device)
-                        
-                        outputs = interpolated_model(inputs)
-                        val_loss += criterion(outputs, targets).item()
-                        
-                        _, predicted = outputs.max(1)
-                        val_correct += predicted.eq(targets).sum().item()
-                        val_total += targets.size(0)
-                
-                val_loss = val_loss / (len(test_loader) * len(interpolation_points))
-                val_accuracy = 100. * val_correct / val_total
-                print(f'Validation - Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.2f}%')
-                print('-' * 50)
+
+def build_state_dict(w_flat: torch.Tensor,
+                     specs: list[tuple[str,int]],
+                     prototype_model: torch.nn.Module
+                    ) -> OrderedDict:
+    """
+    Convert a flat parameter vector back into a OrderedDict matching prototype_model.
+    
+    Args:
+      w_flat:    1D Tensor of length = sum(p.numel() for p in prototype_model.parameters())
+      specs:     list of (name, numel) for each parameter in prototype_model.named_parameters()
+      prototype_model: any nn.Module whose .state_dict() naming/param shapes you want to match
+    
+    Returns:
+      OrderedDict{name → Tensor.view_as(original_param)}
+    """
+    state = OrderedDict()
+    offset = 0
+    named_params = dict(prototype_model.named_parameters())
+    for name, numel in specs:
+        chunk = w_flat[offset: offset + numel]
+        offset += numel
+        orig_param = named_params[name]
+        state[name] = chunk.view_as(orig_param)
+    return state

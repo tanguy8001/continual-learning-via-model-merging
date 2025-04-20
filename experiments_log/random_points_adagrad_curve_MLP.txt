@@ -1,0 +1,51 @@
+Epoch: 0, Batch: 0, Loss: 2.3612
+Epoch: 0, Batch: 100, Loss: 1.8745
+Epoch: 0, Batch: 200, Loss: 2.1220
+Epoch: 0, Batch: 300, Loss: 1.8177
+Epoch: 0, Average Loss: 1.9865, Accuracy: 41.13%
+Epoch: 1, Batch: 0, Loss: 1.9360
+Epoch: 1, Batch: 100, Loss: 1.7396
+Epoch: 1, Batch: 200, Loss: 1.9278
+Epoch: 1, Batch: 300, Loss: 1.7997
+Epoch: 1, Average Loss: 1.8670, Accuracy: 44.11%
+Epoch: 2, Batch: 0, Loss: 1.9389
+Epoch: 2, Batch: 100, Loss: 2.0695
+Epoch: 2, Batch: 200, Loss: 1.8623
+Epoch: 2, Batch: 300, Loss: 2.0666
+Epoch: 2, Average Loss: 1.8383, Accuracy: 44.95%
+Epoch: 3, Batch: 0, Loss: 1.7883
+Epoch: 3, Batch: 100, Loss: 1.8798
+Epoch: 3, Batch: 200, Loss: 1.7991
+Epoch: 3, Batch: 300, Loss: 1.9158
+Epoch: 3, Average Loss: 1.8205, Accuracy: 45.41%
+Epoch: 4, Batch: 0, Loss: 1.7624
+Epoch: 4, Batch: 100, Loss: 1.8623
+Epoch: 4, Batch: 200, Loss: 1.8413
+Epoch: 4, Batch: 300, Loss: 1.8513
+Epoch: 4, Average Loss: 1.8045, Accuracy: 45.92%
+Epoch: 5, Batch: 0, Loss: 1.6638
+Epoch: 5, Batch: 100, Loss: 1.8248
+Epoch: 5, Batch: 200, Loss: 1.8976
+Epoch: 5, Batch: 300, Loss: 1.7881
+Epoch: 5, Average Loss: 1.7951, Accuracy: 46.15%
+Epoch: 6, Batch: 0, Loss: 1.6604
+Epoch: 6, Batch: 100, Loss: 1.8366
+Epoch: 6, Batch: 200, Loss: 1.6780
+Epoch: 6, Batch: 300, Loss: 1.7471
+Epoch: 6, Average Loss: 1.7800, Accuracy: 46.57%
+Epoch: 7, Batch: 0, Loss: 1.6992
+Epoch: 7, Batch: 100, Loss: 1.6550
+Epoch: 7, Batch: 200, Loss: 1.8743
+Epoch: 7, Batch: 300, Loss: 1.9433
+Epoch: 7, Average Loss: 1.7827, Accuracy: 46.47%
+Epoch: 8, Batch: 0, Loss: 1.7737
+Epoch: 8, Batch: 100, Loss: 1.7015
+Epoch: 8, Batch: 200, Loss: 1.7114
+Epoch: 8, Batch: 300, Loss: 1.7510
+Epoch: 8, Average Loss: 1.7730, Accuracy: 46.95%
+Epoch: 9, Batch: 0, Loss: 1.7059
+Epoch: 9, Batch: 100, Loss: 1.6544
+Epoch: 9, Batch: 200, Loss: 1.6868
+Epoch: 9, Batch: 300, Loss: 1.8381
+Epoch: 9, Average Loss: 1.7653, Accuracy: 47.19%
+Models saved to checkpoints directory
