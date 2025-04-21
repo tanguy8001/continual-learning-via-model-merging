@@ -18,6 +18,7 @@ from CL.Eval import evaluate_task_accuracies
 from CL.Data import get_task_data_with_labels
 import logging
 
+
 class CurveFusion:
 
     def __init__(self, args, base_models, target_model, data):

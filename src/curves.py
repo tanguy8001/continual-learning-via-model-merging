@@ -5,6 +5,34 @@ import torch.nn.functional as F
 from torch.nn import Module, Parameter
 from torch.nn.modules.utils import _pair
 from scipy.special import binom
+import wandb
+from torch.nn import Module, Parameter
+from torch.nn.modules.utils import _pair
+import torch.nn as nn
+import torch.optim as optim
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
+
+
+class LearnedCoeffLayerMLP(Module):
+    def __init__(self, hidden_dim=32, bias=True, num_bends=3):
+        super().__init__()
+        self.num_bends = num_bends
+
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(1, hidden_dim, bias=bias),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, hidden_dim, bias=bias),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_dim, num_bends),
+            torch.nn.Softmax(dim=-1),
+        )
+
+    def forward(self,
+                t: float,
+               ) -> torch.Tensor:
+        """
+        """
+        return self.mlp(t.view(-1, 1)).squeeze(0)
 
 
 class Bezier(Module):
@@ -278,7 +306,7 @@ class CurveNet(Module):
             parameter.data.copy_(base_parameter.data)
 
     def import_base_buffers(self, base_model):
-        for buffer, base_buffer in zip(self.net._all_buffers(), base_model._all_buffers()):
+        for (_, buffer), (_, base_buffer) in zip(self.net.named_buffers(), base_model.named_buffers()):
             buffer.data.copy_(base_buffer.data)
 
     def export_base_parameters(self, base_model, index):

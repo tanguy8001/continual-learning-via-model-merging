@@ -1,0 +1,28 @@
+Starting curve merging with MLP at: Mon Apr 21 17:40:03 CEST 2025
+Using device: cuda
+Loaded CIFAR10.
+Files already downloaded and verified
+Files already downloaded and verified
+Using the heterogeneous data-split setup with class dog.
+Training Model A...
+Training Model B...
+Models saved to checkpoints directory
+wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: gdgvn (Continual_Learning-DAL) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.19.9
+wandb: Run data is saved locally in /work/courses/3dv/24/clmm/wandb/run-20250421_174359-o5plph84
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run dutiful-monkey-4
+wandb: ⭐️ View project at https://wandb.ai/Continual_Learning-DAL/Model%20Path%20Fusion%20for%20Continual%20Learning
+wandb: 🚀 View run at https://wandb.ai/Continual_Learning-DAL/Model%20Path%20Fusion%20for%20Continual%20Learning/runs/o5plph84
+Model A accuracy: 34.90%
+Model B accuracy: 38.33%
+Merging models using CurveMLP...
+/work/courses/3dv/24/clmm/src/curves_MLP.py:115: FutureWarning: `torch.nn.utils.stateless.functional_call` is deprecated as of PyTorch 2.0 and will be removed in a future version of PyTorch. Please use `torch.func.functional_call` instead which is a drop-in replacement.
+  outputs    = functional_call(model1, interp_state, (inputs,))
+Epoch: 0, Batch: 0, Loss: 2.2379
+Epoch: 0, Batch: 100, Loss: nan
+Epoch: 0, Batch: 200, Loss: nan
+Epoch: 0, Batch: 300, Loss: nan
+Epoch: 0, Average Loss: nan, Accuracy: 10.11%
+slurmstepd: error: *** JOB 17683 ON studgpu-node17 CANCELLED AT 2025-04-21T17:55:12 ***

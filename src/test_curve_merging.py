@@ -296,10 +296,12 @@ def save_model(model, config, epoch, val_acc, save_path):
 class ODEFunc(nn.Module):
     def __init__(self, param_dim):
         super().__init__()
+        # Reduce network size to save memory
+        hidden_size = 128  # Reduced from 256
         self.net = nn.Sequential(
-            nn.Linear(param_dim + 1, 256),  # +1 for time
+            nn.Linear(param_dim + 1, hidden_size),
             nn.Tanh(),
-            nn.Linear(256, param_dim)
+            nn.Linear(hidden_size, param_dim)
         )
         
     def forward(self, t, y):
@@ -361,9 +363,10 @@ def test_ode_merging():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    # Use the same configuration as in test_curve_merging
+    # Use the same configuration as in test_curve_merging but with smaller batch size
     config = CurveConfig(
         learning_rate=0.05,
+        batch_size=64  # Reduced batch size to save memory
     )
     
     # Load data in the same way
@@ -401,9 +404,28 @@ def test_ode_merging():
         output_dim=config.output_dim,
     ).to(device)
     
-    # Load pre-trained models (optional)
-    # If you already have trained models, load them here
-    # Otherwise, train them as in test_curve_merging
+    # Train models if needed
+    print("\nTraining Model A...")
+    train_model(
+        config,
+        model_A,
+        data_loaders['trainA'],
+        data_loaders['test'],
+        epochs=5,  # Fewer epochs to save time
+        device=device,
+        learning_rate=config.model_learning_rate
+    )
+    
+    print("\nTraining Model B...")
+    train_model(
+        config,
+        model_B,
+        data_loaders['trainB'],
+        data_loaders['test'],
+        epochs=5,  # Fewer epochs to save time
+        device=device,
+        learning_rate=config.model_learning_rate
+    )
     
     # Extract parameters as vectors
     theta_0 = nn.utils.parameters_to_vector(model_A.parameters()).detach()
@@ -422,9 +444,11 @@ def test_ode_merging():
     
     # Train ODE function
     from torchdiffeq import odeint
+    import gc
     
     optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.01)
-    n_epochs = 10
+    n_epochs = 5  # Reduced number of epochs
+    n_time_samples = 3  # Reduced number of time samples
     
     # Epoch progress bar
     for epoch in tqdm(range(n_epochs), desc="Training ODE function"):
@@ -441,13 +465,17 @@ def test_ode_merging():
             
             optimizer.zero_grad()
             
-            # Sample random time points
-            t_samples = torch.linspace(0, 1, 5).to(device)
+            # Sample random time points - fewer points to save memory
+            t_samples = torch.linspace(0, 1, n_time_samples).to(device)
             
-            # Solve ODE
-            theta_samples = odeint(ode_func, theta_0, t_samples)
-
-            print("theta_samples: ", theta_samples)
+            # Solve ODE with lower tolerance for faster computation
+            theta_samples = odeint(
+                ode_func, 
+                theta_0, 
+                t_samples, 
+                method='dopri5',
+                options={'rtol': 1e-2, 'atol': 1e-2}  # Higher tolerance = less memory
+            )
             
             # Compute loss at each sampled point
             total_loss = 0
@@ -465,9 +493,9 @@ def test_ode_merging():
             # Add endpoint constraints
             endpoint_loss = torch.norm(theta_samples[0] - theta_0)**2 + torch.norm(theta_samples[-1] - theta_1)**2
             
-            # Add regularization to encourage smooth paths
+            # Add regularization to encourage smooth paths - reduce number of points
             reg_loss = 0
-            for t in torch.linspace(0, 1, 10).to(device):
+            for t in torch.linspace(0, 1, 5).to(device):  # Reduced from 10 points
                 t_tensor = t.view(1).to(device)
                 dtheta_dt = ode_func(t_tensor, theta_0.clone())
                 reg_loss += torch.norm(dtheta_dt)**2
@@ -483,6 +511,10 @@ def test_ode_merging():
             epoch_loss += loss.item()
             batch_count += 1
             train_bar.set_postfix({"Loss": loss.item()})
+            
+            # Clear cache to free memory
+            torch.cuda.empty_cache()
+            gc.collect()
         
         avg_epoch_loss = epoch_loss / batch_count
         print(f"Epoch {epoch+1}/{n_epochs}, Average Loss: {avg_epoch_loss:.4f}")
@@ -490,8 +522,17 @@ def test_ode_merging():
     # Find minimum loss point on ODE path
     ode_func.eval()
     with torch.no_grad():
-        t_grid = torch.linspace(0, 1, 21).to(device)
-        theta_grid = odeint(ode_func, theta_0, t_grid)
+        # Use fewer grid points to save memory
+        t_grid = torch.linspace(0, 1, 11).to(device)  # Reduced from 21
+        
+        # Set higher tolerance for ODE solver to use less memory
+        theta_grid = odeint(
+            ode_func, 
+            theta_0, 
+            t_grid,
+            method='dopri5',
+            options={'rtol': 1e-2, 'atol': 1e-2}
+        )
         
         min_loss = float('inf')
         best_t = 0.5
@@ -503,27 +544,44 @@ def test_ode_merging():
             theta_t = theta_grid[i]
             nn.utils.vector_to_parameters(theta_t, target_model_ode.parameters())
             
-            # Evaluate loss on validation set
+            # Evaluate loss on validation set - use smaller subset for evaluation
             total_loss = 0
-            for x, y in data_loaders['test']:
+            num_batches = 0
+            for batch_idx, (x, y) in enumerate(data_loaders['test']):
+                # Only use a subset of test data to save memory
+                if batch_idx >= 10:  # Limit evaluation to 10 batches
+                    break
+                    
                 x, y = x.to(device), y.to(device)
                 outputs = target_model_ode(x)
                 loss = F.cross_entropy(outputs, y)
                 total_loss += loss.item()
+                num_batches += 1
+                
+                # Clear memory
+                del x, y, outputs
+                torch.cuda.empty_cache()
             
-            if total_loss < min_loss:
-                min_loss = total_loss
-                best_t = t.item()
-                best_theta = theta_t.clone()
+            if num_batches > 0:
+                total_loss /= num_batches
+                
+                if total_loss < min_loss:
+                    min_loss = total_loss
+                    best_t = t.item()
+                    best_theta = theta_t.clone()
                 
             eval_bar.set_postfix({"t": t.item(), "loss": total_loss, "best_t": best_t})
+            
+            # Clear memory after each evaluation point
+            gc.collect()
+            torch.cuda.empty_cache()
         
         print(f"Best ODE point: t={best_t:.3f}, Loss={min_loss:.4f}")
         
         # Set target model to best parameters
         nn.utils.vector_to_parameters(best_theta, target_model_ode.parameters())
     
-    # Evaluate ODE model
+    # Evaluate ODE model - full evaluation on the test set
     ode_acc = evaluate_model(target_model_ode, data_loaders['test'], device)
     print(f"\nODE Model Accuracy: {ode_acc:.2f}%")
     
@@ -564,17 +622,251 @@ def test_ode_merging():
         'best_t': best_t
     }
 
-if __name__ == "__main__":
-    # Run the original Bezier curve test
-    print("\n=== Testing Bezier Curve Merging ===")
-    #history, bezier_model = test_curve_merging()
+def test_direct_optimization():
+    """Test direct path optimization for model merging.
+    This approach discretizes the path and directly optimizes each point.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
     
-    # Run the Neural ODE test
-    print("\n=== Testing Neural ODE Merging ===")
-    ode_results = test_ode_merging()
+    # Configuration
+    config = CurveConfig(
+        learning_rate=0.05,
+        batch_size=128
+    )
+    
+    # Load data
+    data_path = os.path.join(os.getcwd(), "data")
+    os.makedirs(data_path, exist_ok=True)
+    
+    data_loaders, num_classes = double_loaders(
+        dataset=config.dataset,
+        path=data_path,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        transform_name="MLPNET",
+        digit=config.test_digit,
+        cifar_class=config.cifar_class,
+    )
+    
+    # Create fused loader for training
+    fused_loader = create_fused_loader(
+        data_loaders['trainA'],
+        data_loaders['trainB'],
+        batch_size=config.batch_size,
+        num_workers=config.num_workers
+    )
+    
+    # Create models
+    model_A = fcmodel.FCModelBase(
+        input_dim=config.input_dim,
+        hidden_dims=config.hidden_dims,
+        output_dim=config.output_dim,
+    ).to(device)
+    
+    model_B = fcmodel.FCModelBase(
+        input_dim=config.input_dim,
+        hidden_dims=config.hidden_dims,
+        output_dim=config.output_dim,
+    ).to(device)
+    
+    # Train models if needed
+    print("\nTraining Model A...")
+    train_model(
+        config,
+        model_A,
+        data_loaders['trainA'],
+        data_loaders['test'],
+        epochs=5,
+        device=device,
+        learning_rate=config.model_learning_rate
+    )
+    
+    print("\nTraining Model B...")
+    train_model(
+        config,
+        model_B,
+        data_loaders['trainB'],
+        data_loaders['test'],
+        epochs=5,
+        device=device,
+        learning_rate=config.model_learning_rate
+    )
+    
+    # Parameters as vectors for model endpoints
+    theta_0 = nn.utils.parameters_to_vector(model_A.parameters()).detach()
+    theta_1 = nn.utils.parameters_to_vector(model_B.parameters()).detach()
+    
+    # Number of intermediate points for direct optimization
+    num_intermediate = 3  # 5 total points including endpoints
+    
+    # Create a list of models for each point on the path
+    path_models = [copy.deepcopy(model_A) for _ in range(num_intermediate + 2)]
+    
+    # Fix the endpoints (first and last models)
+    path_models[0] = model_A
+    path_models[-1] = model_B
+    
+    # Initialize intermediate models with linear interpolation
+    for i in range(1, num_intermediate + 1):
+        alpha = i / (num_intermediate + 1)
+        theta_i = (1 - alpha) * theta_0 + alpha * theta_1
+        nn.utils.vector_to_parameters(theta_i, path_models[i].parameters())
+    
+    # Collect parameters to optimize (exclude endpoints)
+    params_to_optimize = []
+    for i in range(1, num_intermediate + 1):
+        params_to_optimize.extend(path_models[i].parameters())
+    
+    # Create optimizer for middle points
+    optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
+    
+    # Training loop
+    num_epochs = 5
+    
+    for epoch in tqdm(range(num_epochs), desc="Training direct path"):
+        # Process batches
+        path_losses = []
+        
+        for x, y in tqdm(fused_loader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False):
+            x, y = x.to(device), y.to(device)
+            
+            optimizer.zero_grad()
+            
+            # Loss components
+            task_loss = 0
+            smoothness_loss = 0
+            
+            # Task performance loss - all models should perform well
+            for model in path_models:
+                output = model(x)
+                task_loss += F.cross_entropy(output, y)
+            
+            # Path smoothness loss - penalize non-smooth transitions
+            for i in range(1, len(path_models) - 1):
+                theta_prev = nn.utils.parameters_to_vector(path_models[i-1].parameters())
+                theta_curr = nn.utils.parameters_to_vector(path_models[i].parameters())
+                theta_next = nn.utils.parameters_to_vector(path_models[i+1].parameters())
+                
+                # Penalize second derivative (measure of curvature)
+                second_derivative = theta_next - 2*theta_curr + theta_prev
+                smoothness_loss += torch.norm(second_derivative)**2
+            
+            # Total loss with weighting
+            total_loss = task_loss + 0.1 * smoothness_loss
+            
+            # Backward and optimize
+            total_loss.backward()
+            optimizer.step()
+            
+            path_losses.append(total_loss.item())
+        
+        # Print epoch stats
+        avg_loss = sum(path_losses) / len(path_losses)
+        print(f"Epoch {epoch+1}/{num_epochs}, Average Loss: {avg_loss:.4f}")
+    
+    # Find the best model along the path
+    print("Finding the best model on the path...")
+    best_model = None
+    best_acc = -1
+    best_idx = -1
+    
+    # Evaluate each model on the test set
+    for i, model in enumerate(path_models):
+        acc = evaluate_model(model, data_loaders['test'], device)
+        position = i / (len(path_models) - 1)  # Normalized position [0,1]
+        print(f"Model at position {position:.2f}: Test accuracy = {acc:.2f}%")
+        
+        if acc > best_acc:
+            best_acc = acc
+            best_model = copy.deepcopy(model)
+            best_idx = i
+    
+    # Create merged model
+    target_model = fcmodel.FCModelBase(
+        input_dim=config.input_dim,
+        hidden_dims=config.hidden_dims,
+        output_dim=config.output_dim,
+    ).to(device)
+    
+    # Copy parameters from best model
+    target_model.load_state_dict(best_model.state_dict())
+    
+    best_position = best_idx / (len(path_models) - 1)
+    print(f"\nBest model found at position {best_position:.2f} with accuracy {best_acc:.2f}%")
+    
+    # Compare with Bezier approach
+    target_model_bezier = fcmodel.FCModelBase(
+        input_dim=config.input_dim,
+        hidden_dims=config.hidden_dims,
+        output_dim=config.output_dim
+    ).to(device)
+    
+    bezier_model = curve_ensembling(
+        config=config,
+        models=[model_A, model_B],
+        target_model=target_model_bezier,
+        train_loader=fused_loader,
+        test_loader=data_loaders['test'],
+        device=device,
+        num_classes=config.output_dim,
+        input_dim=config.input_dim
+    )
+    
+    bezier_acc = evaluate_model(bezier_model, data_loaders['test'], device)
+    
+    # Compare results
+    print("\nComparison:")
+    print(f"Direct path model: {best_acc:.2f}%")
+    print(f"Bezier model: {bezier_acc:.2f}%")
+    
+    return {
+        'direct_acc': best_acc,
+        'bezier_acc': bezier_acc,
+        'model_A': model_A,
+        'model_B': model_B,
+        'direct_model': target_model,
+        'bezier_model': bezier_model,
+        'best_position': best_position
+    }
+
+if __name__ == "__main__":
+    # Run options
+    run_bezier = False
+    run_ode = False
+    run_direct = True
+    
+    results = {}
+    
+    # Run the original Bezier curve test if enabled
+    #if run_bezier:
+    #    print("\n=== Testing Bezier Curve Merging ===")
+    #    history, bezier_model = test_curve_merging()
+    #    results['bezier'] = history['merged'][-1]
+    
+    # Run the Neural ODE test if enabled
+    if run_ode:
+        print("\n=== Testing Neural ODE Merging ===")
+        ode_results = test_ode_merging()
+        results['ode'] = ode_results['ode_acc']
+        results['ode_t'] = ode_results['best_t']
+    
+    # Run the direct optimization test if enabled
+    if run_direct:
+        print("\n=== Testing Direct Optimization ===")
+        direct_results = test_direct_optimization()
+        results['direct'] = direct_results['direct_acc']
+        results['direct_pos'] = direct_results['best_position']
+        results['bezier_acc'] = direct_results['bezier_acc']
     
     # Final comparison
     print("\n=== Final Comparison ===")
-    #print(f"Bezier Curve Accuracy: {history['merged'][-1]:.2f}%")
-    print(f"Neural ODE Accuracy: {ode_results['ode_acc']:.2f}%")
-    print(f"Neural ODE Best t-value: {ode_results['best_t']:.3f}")
+    if 'bezier' in results:
+        print(f"Bezier Curve Accuracy: {results['bezier']:.2f}%")
+    if 'ode' in results:
+        print(f"Neural ODE Accuracy: {results['ode']:.2f}%")
+        print(f"Neural ODE Best t-value: {results['ode_t']:.3f}")
+    if 'direct' in results:
+        print(f"Direct Optimization Accuracy: {results['direct']:.2f}%")
+        print(f"Direct Optimization Best Position: {results['direct_pos']:.2f}")
+        print(f"Bezier Curve Accuracy (from Direct test): {results['bezier_acc']:.2f}%")

@@ -2,7 +2,7 @@ import os
 import torch
 import torchvision
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 
 
 class Transforms:
@@ -181,3 +181,23 @@ def double_loaders(dataset, path, batch_size, num_workers, transform_name, digit
             pin_memory=True
         ),
     }, max(train_targets) + 1  # Use train_targets which is accessible from dataset
+
+def create_fused_loader(loader_A, loader_B, batch_size, num_workers):
+    """Create a fused data loader from two separate loaders."""
+    # Get underlying datasets
+    dataset_A = loader_A.dataset
+    dataset_B = loader_B.dataset
+    
+    # Combine datasets
+    fused_dataset = ConcatDataset([dataset_A, dataset_B])
+    
+    # Create new loader with combined data
+    fused_loader = DataLoader(
+        fused_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    return fused_loader

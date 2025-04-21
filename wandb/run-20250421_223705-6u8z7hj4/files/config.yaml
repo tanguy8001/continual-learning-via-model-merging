@@ -1,0 +1,46 @@
+_wandb:
+    value:
+        cli_version: 0.19.9
+        m: []
+        python_version: 3.11.11
+        t:
+            "1":
+                - 1
+                - 41
+                - 55
+                - 105
+            "2":
+                - 1
+                - 41
+                - 55
+                - 105
+            "3":
+                - 16
+                - 23
+                - 55
+            "4": 3.11.11
+            "5": 0.19.9
+            "8":
+                - 5
+            "12": 0.19.9
+            "13": linux-x86_64
+architecture:
+    value: FCModelCurve
+bias:
+    value: false
+coeff_layer:
+    value: LearnedCoeffLayerMLP
+dataset:
+    value: CIFAR10
+device:
+    value: cuda
+epochs:
+    value: 20
+learning_rate:
+    value: 0.01
+num_bends:
+    value: 3
+optimizer:
+    value: SGD
+weight_decay:
+    value: 0.0001
