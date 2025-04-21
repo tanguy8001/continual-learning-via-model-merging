@@ -25,13 +25,17 @@ from curves_MLP import CurveMLP
      
 
 def main():
-    # Configuration
+
     config = CurveConfig()
     config.dataset = "CIFAR10"
     config.input_dim = 3072  # 32x32x3
     config.batch_size = 128
     config.model_epochs = 10
     config.epochs = 10  # for curve training
+
+
+
+    # Configuration
     
     # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -51,9 +55,12 @@ def main():
     ])
     
     # Load CIFAR10 dataset
+    #train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+    #test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+
     train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
-    
+
     # Split training data for two models
     train_size = len(train_dataset)
     indices = list(range(train_size))
@@ -147,7 +154,7 @@ def main():
     W2 = torch.cat([p.view(-1) for p in model_B.parameters()])
     
     curve_mlp = CurveMLP(
-        in_features=2*W1.numel(),  # t parameter dimension
+        in_features=W1.numel() + W2.numel(),  # actually, both values are equal but it is clearer this way
         out_features=W1.numel(),  # same as total number of parameters
         bias=True,
         hidden_dim=32

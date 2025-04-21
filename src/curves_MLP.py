@@ -10,7 +10,7 @@ import copy
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from torch.nn.utils.stateless import functional_call
 from collections import OrderedDict
-
+import wandb
 
 class CurveMLP(Module):
     def __init__(self, in_features, out_features, bias = True, hidden_dim= 32):
@@ -72,10 +72,27 @@ class CurveMLP(Module):
         criterion = nn.CrossEntropyLoss()
 
         # Define interpolation points
-        interpolation_points = torch.tensor([0.2, 0.4, 0.6, 0.8, 1.0], device=device)
+        interpolation_points = torch.tensor([0.5], device=device)
+        #interpolation_points = torch.rand(10, device=device)  # Generate 10 random values between 0 and 1
         flat1 = parameters_to_vector(model1.parameters())
         flat2 = parameters_to_vector(model2.parameters())
         specs = [(n, p.numel()) for n, p in model1.named_parameters()]
+
+        run = wandb.init(
+            entity = "louis-barinka-eth-z-rich",
+            project="Model Path Fusion for Continual Learning",
+
+            config={
+                "device": "cpu", 
+                "learning_rate": config.learning_rate,
+                "epochs": config.epochs,
+                "Optimizer": "SGD",
+                "Buffer size in batches": len(train_loader),
+                #"interpolation_points": interpolation_points.tolist()
+                "interpolation_points": interpolation_points,
+                "Dataset": "MNIST"
+            }
+        )
 
         for epoch in range(config.epochs):
             # Training phase
@@ -91,7 +108,7 @@ class CurveMLP(Module):
                 
                 # Initialize batch loss
                 batch_loss = 0.0
-                interpolation_points =  torch.tensor([0.5])
+                #interpolation_points =  torch.tensor([0.5])
                 # interpolation_points =  torch.rand(6, device=device)
                 # For each interpolation point
                 for t in interpolation_points:
@@ -119,12 +136,16 @@ class CurveMLP(Module):
                 
                 if batch_idx % 100 == 0:
                     print(f'Epoch: {epoch}, Batch: {batch_idx}, Loss: {batch_loss.item():.4f}')
-
             # Print epoch statistics
             avg_loss = total_loss / len(train_loader)
             accuracy = 100. * total_correct / total_samples
             print(f'Epoch: {epoch}, Average Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
-
+            
+            wandb.log({
+                "epoch": epoch, 
+                "average Loss": avg_loss,
+                "accuracy": accuracy
+            })
 
 def build_state_dict(w_flat: torch.Tensor,
                      specs: list[tuple[str,int]],
