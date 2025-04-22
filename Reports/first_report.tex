@@ -1,0 +1,42 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\setlength{\parindent}{0pt}
+
+\date{\today}
+\begin{document}
+Hello Giulia,\\
+Just a small report on what we’ve been doing so far.\\
+
+\paragraph*{Recap\\}
+
+As discussed with you, our idea was to extend the techniques of Mode Connectivity presented by Garipov.
+In their paper,  they focus on simpler curves for mode connectivity - e.g. Bézier curves - with an application to fast ensembling. We aim to study more complex curves, with an application to model merging.\\
+
+We consider the model 1 and 2 - with the same architecture - with respective weights $W_1$ and $W_2$. Both those weights correspond to a mode of the multitask loss.
+To connect those modes, we define the following curve
+\begin{equation}
+    \psi_\theta (t, W_1, W_2) = (1-t) \cdot W_1 + t \cdot W_2 + (1-t)*t \cdot f_\theta(W_1, W_2, t)
+\end{equation}
+where $f_\theta$ is an MLP parameterized by $\theta$. For now, $\psi$ takes value in the weight space. We refer to the outputs of this function as the interpolated weights.\\
+
+The MLP $f$ is trained as follow: we sample $n$ points $t_i$ uniformly between 0 and 1, compute $l_i$ the loss corresponding to $\psi_\theta (t_i, W_1, W_2)$, and finally optimize $\theta$ with regard to the loss $\sum_{i=1}^{n} l_i$.
+
+\paragraph*{Progress}
+\begin{itemize}
+  \item We've implemented the curve $\psi$ as well as the above training protocol. The use of the functorch library was practical.
+  \item We've started experimenting with Weights and Biases to try to organize our experiments.
+  \item We've ran some experiments already and it's performing better than Bézier curves for class incremental learning. We'll share more data soon.
+\end{itemize}
+
+\paragraph*{To come}
+\begin{itemize}
+  \item More experiments and printing graphs of the result to get a better understanding of the shapes of our curves. 
+  \item Modifying our optimizer: Since we're sampling $t$ between 0 and 1, the loss can be unstable.
+  \item The curve is probably highly non-smooth. Maybe experience with some Smoothness Regularizers that we would add to the loss function.
+\end{itemize}
+
+Not easy to progress too fast on this project since we both have a lot on our plate this semester but we still wanted to share the little progress we made. Any feedback is welcomed :)
+\end{document}
+
+
