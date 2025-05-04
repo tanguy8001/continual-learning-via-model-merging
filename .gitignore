@@ -71,3 +71,11 @@ target/
 
 #Idea
 .idea*
+
+# macOS metadata
+.DS_Store
+
+# Weights & Biases runs
+wandb/
+
+/wandb

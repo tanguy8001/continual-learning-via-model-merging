@@ -2,7 +2,9 @@
 Trains two models on CIFAR10 dataset and merges them using curve ensembling with MLP.
 """
 
-from typing import List, Enum
+from enum import Enum
+import tyro
+from typing import List
 import os
 import torch
 from torch import nn
@@ -21,133 +23,110 @@ from curve_merging import (
     evaluate_model,
     train_model
 )
-from curves_MLP import CurveMLP, stratified_split
+from curves_MLP import (
+    CurveMLP,
+    stratified_split,
+    ExperimentConfig,
+    InterpolationType,
+    TrainingBufferConfig,
+    ModelToMergeConfig,
+    CurveConfigMLP
+)
 from dataclasses import dataclass
 import argparse
+import wandb
 
 
-class InterpolationType(Enum):
-    STATIC  = "static"
-    DYNAMIC = "dynamic"
 
-@dataclass
-class CurveConfigMLP:
-    interpolation_type: InterpolationType
-    interpolation_points: List[float]
-    hidden_dim: int
-    learning_rate: float
-    momentum: float
-    epochs: int 
+#def getConfigCLI() -> ExperimentConfig:
+    #def parse_list(s: str, elem_type):
+        #return [elem_type(x) for x in s.split(",") if x]
 
-@dataclass
-class ModelToMergeConfig:
-    batch_size: int
-    num_workers: int
-    model_epochs: int
-    input_dim: int
-    output_dim: int
-    hidden_dims: int
-    weight_decay: float = 5e-4
-    epochs: int = 10
-    learning_rate: float = 0.07
+    #parser = argparse.ArgumentParser(description="Experiment configuration")
 
+    ## Curve section
+    #parser.add_argument(
+        #"--interpolation-type",
+        #type=str,
+        #choices=[t.value for t in InterpolationType],
+        #default=ExperimentConfig().curve.interpolation_type.value,
+        #help="static or dynamic"
+    #)
+    #parser.add_argument(
+        #"--interpolation-points",
+        #type=str,
+        #default=','.join(map(str, ExperimentConfig().curve.interpolation_points)),
+        #help="comma-separated floats e.g. 0.0,0.5,1.0"
+    #)
+    #parser.add_argument("--hidden-dim", type=int,
+                        #default=ExperimentConfig().curve.hidden_dim,
+                        #help="hidden dim for curve MLP")
+    #parser.add_argument("--learning-rate", type=float,
+                        #default=ExperimentConfig().curve.learning_rate,
+                        #help="learning rate for curve MLP")
+    #parser.add_argument("--momentum", type=float,
+                        #default=ExperimentConfig().curve.momentum,
+                        #help="momentum for curve MLP")
+    #parser.add_argument("--epochs", type=int,
+                        #default=ExperimentConfig().curve.epochs,
+                        #help="epochs for curve MLP")
 
-@dataclass
-class TrainingBufferConfig:
-    percentage: float
+    ## ModelMerge section
+    #parser.add_argument("--batch-size", type=int,
+                        #default=ExperimentConfig().model.batch_size,
+                        #help="batch size for model training")
+    #parser.add_argument("--num-workers", type=int,
+                        #default=ExperimentConfig().model.num_workers,
+                        #help="number of data loader workers")
+    #parser.add_argument("--model-epochs", type=int,
+                        #default=ExperimentConfig().model.model_epochs,
+                        #help="epochs for base models A/B")
+    #parser.add_argument("--input-dim", type=int,
+                        #default=ExperimentConfig().model.input_dim,
+                        #help="input dimension for MLP")
+    #parser.add_argument("--output-dim", type=int,
+                        #default=ExperimentConfig().model.output_dim,
+                        #help="output classes for MLP")
+    #parser.add_argument("--hidden-dims", type=int,
+                        #default=ExperimentConfig().model.hidden_dims,
+                        #help="hidden dims for base MLPs")
 
-@dataclass
-class ExperimentConfig:
-    curve: CurveConfigMLP = CurveConfigMLP()
-    model: ModelToMergeConfig = ModelToMergeConfig()
-    buffer: TrainingBufferConfig = TrainingBufferConfig()
+    ## Buffer section
+    #parser.add_argument("--percentage", type=float,
+                        #default=ExperimentConfig().buffer.percentage,
+                        #help="percentage split for training buffer")
 
+    #args = parser.parse_args()
+    #cfg = ExperimentConfig()
 
-def getConfigCLI() -> ExperimentConfig:
-    def parse_list(s: str, elem_type):
-        return [elem_type(x) for x in s.split(",") if x]
+    ## Populate curve
+    #cfg.curve.interpolation_type = InterpolationType(args.interpolation_type)
+    #cfg.curve.interpolation_points = parse_list(args.interpolation_points, float)
+    #cfg.curve.hidden_dim = args.hidden_dim
+    #cfg.curve.learning_rate = args.learning_rate
+    #cfg.curve.momentum = args.momentum
+    #cfg.curve.epochs = args.epochs
 
-    parser = argparse.ArgumentParser(description="Experiment configuration")
+    ## Populate model
+    #cfg.model.batch_size = args.batch_size
+    #cfg.model.num_workers = args.num_workers
+    #cfg.model.model_epochs = args.model_epochs
+    #cfg.model.input_dim = args.input_dim
+    #cfg.model.output_dim = args.output_dim
+    #cfg.model.hidden_dims = args.hidden_dims
 
-    # Curve section
-    parser.add_argument(
-        "--interpolation-type",
-        type=str,
-        choices=[t.value for t in InterpolationType],
-        default=ExperimentConfig().curve.interpolation_type.value,
-        help="static or dynamic"
-    )
-    parser.add_argument(
-        "--interpolation-points",
-        type=str,
-        default=','.join(map(str, ExperimentConfig().curve.interpolation_points)),
-        help="comma-separated floats e.g. 0.0,0.5,1.0"
-    )
-    parser.add_argument("--hidden-dim", type=int,
-                        default=ExperimentConfig().curve.hidden_dim,
-                        help="hidden dim for curve MLP")
-    parser.add_argument("--learning-rate", type=float,
-                        default=ExperimentConfig().curve.learning_rate,
-                        help="learning rate for curve MLP")
-    parser.add_argument("--momentum", type=float,
-                        default=ExperimentConfig().curve.momentum,
-                        help="momentum for curve MLP")
-    parser.add_argument("--epochs", type=int,
-                        default=ExperimentConfig().curve.epochs,
-                        help="epochs for curve MLP")
+    ## Populate buffer
+    #cfg.buffer.percentage = args.percentage
 
-    # ModelMerge section
-    parser.add_argument("--batch-size", type=int,
-                        default=ExperimentConfig().model.batch_size,
-                        help="batch size for model training")
-    parser.add_argument("--num-workers", type=int,
-                        default=ExperimentConfig().model.num_workers,
-                        help="number of data loader workers")
-    parser.add_argument("--model-epochs", type=int,
-                        default=ExperimentConfig().model.model_epochs,
-                        help="epochs for base models A/B")
-    parser.add_argument("--input-dim", type=int,
-                        default=ExperimentConfig().model.input_dim,
-                        help="input dimension for MLP")
-    parser.add_argument("--output-dim", type=int,
-                        default=ExperimentConfig().model.output_dim,
-                        help="output classes for MLP")
-    parser.add_argument("--hidden-dims", type=int,
-                        default=ExperimentConfig().model.hidden_dims,
-                        help="hidden dims for base MLPs")
-
-    # Buffer section
-    parser.add_argument("--percentage", type=float,
-                        default=ExperimentConfig().buffer.percentage,
-                        help="percentage split for training buffer")
-
-    args = parser.parse_args()
-    cfg = ExperimentConfig()
-
-    # Populate curve
-    cfg.curve.interpolation_type = InterpolationType(args.interpolation_type)
-    cfg.curve.interpolation_points = parse_list(args.interpolation_points, float)
-    cfg.curve.hidden_dim = args.hidden_dim
-    cfg.curve.learning_rate = args.learning_rate
-    cfg.curve.momentum = args.momentum
-    cfg.curve.epochs = args.epochs
-
-    # Populate model
-    cfg.model.batch_size = args.batch_size
-    cfg.model.num_workers = args.num_workers
-    cfg.model.model_epochs = args.model_epochs
-    cfg.model.input_dim = args.input_dim
-    cfg.model.output_dim = args.output_dim
-    cfg.model.hidden_dims = args.hidden_dims
-
-    # Populate buffer
-    cfg.buffer.percentage = args.percentage
-
-    return cfg
+    #return cfg
 
 def main():
     # Load experiment configuration
-    cfg: ExperimentConfig = getConfigCLI()
+    cfg: ExperimentConfig = tyro.cli(ExperimentConfig)
+
+    run = wandb.init(entity="Continual_Learning-DAL",
+                     project="Model Path Fusion - CurveNet MLP Coeffs",
+                     config=cfg)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")

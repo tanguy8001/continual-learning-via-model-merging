@@ -14,14 +14,50 @@ from torch.nn.utils.stateless import functional_call
 from collections import OrderedDict, defaultdict
 import wandb
 from dataclasses import dataclass, field
-from typing import List, Optional, Enu
+from typing import List, Optional 
 from enum import Enum
 import random
 
 
+class InterpolationType(Enum):
+    STATIC  = "static"
+    DYNAMIC = "dynamic"
+
+@dataclass
+class CurveConfigMLP:
+    interpolation_type: InterpolationType
+    interpolation_points: List[float]
+    hidden_dim: int
+    learning_rate: float
+    momentum: float
+    epochs: int 
+    hidden_dims: List[int] = field(default_factory=lambda: [400,200,100])
+    weight_decay: float = 5e-4
+
+@dataclass
+class ModelToMergeConfig:
+    batch_size: int
+    num_workers: int
+    model_epochs: int
+    input_dim: int
+    output_dim: int
+    hidden_dims: List[int] = field(default_factory=lambda: [400,200,100])
+    weight_decay: float = 5e-4
+    epochs: int = 10
+    learning_rate: float = 0.07
 
 
+@dataclass
+class TrainingBufferConfig:
+    percentage: float
 
+@dataclass
+class ExperimentConfig:
+    curve: CurveConfigMLP  
+    model: ModelToMergeConfig 
+    buffer: TrainingBufferConfig
+
+ 
 def stratified_split(dataset, percentage: float, seed: int = 42):
     """
     Splits `dataset` into (subset_a, subset_b) so that each class in `dataset`
@@ -50,7 +86,7 @@ def stratified_split(dataset, percentage: float, seed: int = 42):
     train_idxs, val_idxs = [], []
     for cls, idxs in idx_by_class.items():
         random.shuffle(idxs)
-        split = int(len(idxs) * pct)
+        split = int(len(idxs) * percentage)
         train_idxs.extend(idxs[:split])
         val_idxs.extend(idxs[split:])
     
@@ -107,14 +143,14 @@ class CurveMLP(Module):
 
 
 
-    def fit(self, training_buffer: DataLoader , test_loader: DataLoader, cfg: ExperimentConfig,
+    def fit(self, training_buffer: DataLoader , test_loader: DataLoader, cfg: CurveConfigMLP,
                 model1: Module, model2: Module):
-            device = cfg.train.device
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.to(device)
             opt = optim.SGD(self.mlp.parameters(),
-                            lr=cfg.curve.learning_rate,
-                            momentum=cfg.curve.momentum,
-                            weight_decay=cfg.curve.weight_decay)
+                            lr=cfg.learning_rate,
+                            momentum=cfg.momentum,
+                            weight_decay=cfg.weight_decay)
             crit = nn.CrossEntropyLoss()
 
             # prepare weights once
@@ -122,17 +158,14 @@ class CurveMLP(Module):
             flat2 = parameters_to_vector(model2.parameters())
             specs = [(n, p.numel()) for n, p in model1.named_parameters()]
 
-            run = wandb.init(entity=cfg.wandb.entity,
-                            project=cfg.wandb.project,
-                            config=cfg)
 
-            for epoch in range(cfg.curve.epochs):
+            for epoch in range(cfg.epochs):
                 tot_loss = tot_corr = tot_samples = 0
-                for step, (x, y) in enumerate(train_loader):
+                for step, (x, y) in enumerate(training_buffer):
                     x, y = x.to(device), y.to(device)
                     opt.zero_grad()
                     loss = 0.0
-                    for t in cfg.curve.interpolation_points:
+                    for t in cfg.interpolation_points:
                         w_interp = self(t, flat1, flat2)
                         state = build_state_dict(w_interp, specs, model1)
                         out   = functional_call(model1, state, (x,))
@@ -140,14 +173,14 @@ class CurveMLP(Module):
                         _, pred = out.max(1)
                         tot_corr += pred.eq(y).sum().item()
                         tot_samples += y.size(0)
-                    loss = loss / len(cfg.curve.interpolation_points)
+                    loss = loss / len(cfg.interpolation_points)
                     loss.backward(); opt.step()
                     tot_loss += loss.item()
-                    if step % cfg.wandb.log_every_n_steps == 0:
+                    if step % 50 == 0:
                         print(f"E{epoch} S{step} L{loss:.4f}")
                 acc = 100*tot_corr/tot_samples
-                print(f"[Epoch {epoch}] loss={tot_loss/len(train_loader):.4f} acc={acc:.2f}%")
-                wandb.log({"epoch": epoch, "loss": tot_loss/len(train_loader), "acc": acc})
+                print(f"[Epoch {epoch}] loss={tot_loss/len(training_buffer):.4f} acc={acc:.2f}%")
+                wandb.log({"epoch": epoch, "loss": tot_loss/len(training_buffer), "acc": acc})
 
 def build_state_dict(w_flat: torch.Tensor,
                      specs: list[tuple[str,int]],
