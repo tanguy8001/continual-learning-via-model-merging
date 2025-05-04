@@ -25,8 +25,9 @@ from curves_MLP import CurveMLP
 def main():
 
     config = CurveConfig(
-        dataset="CIFAR10",
-        input_dim=3072,  # 32x32x3
+        dataset="MNIST",
+        #input_dim=3072,  # 32x32x3
+        input_dim=784,
         batch_size=128,
         model_epochs=10,
         epochs=10  # for curve training
