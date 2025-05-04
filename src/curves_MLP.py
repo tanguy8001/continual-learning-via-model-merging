@@ -7,10 +7,56 @@ from torch.nn.modules.utils import _pair
 import torch.nn as nn
 import torch.optim as optim
 import copy
+from torch.utils.data import DataLoader, Subset 
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from torchvision import datasets, transforms
 from torch.nn.utils.stateless import functional_call
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import wandb
+from dataclasses import dataclass, field
+from typing import List, Optional, Enu
+from enum import Enum
+import random
+
+
+
+
+
+def stratified_split(dataset, percentage: float, seed: int = 42):
+    """
+    Splits `dataset` into (subset_a, subset_b) so that each class in `dataset`
+    contributes `percentage` of its samples to subset_a and the rest to subset_b.
+    
+    Args:
+        dataset: a torch.utils.data.Dataset with a .targets or .labels attribute.
+        pct: fraction in [0,1] of each class to go into subset_a.
+        seed: random seed for reproducibility.
+    
+    Returns:
+        (subset_a, subset_b) as torch.utils.data.Subset instances.
+    """
+    # 1) grab labels
+    try:
+        labels = dataset.targets
+    except AttributeError:
+        labels = dataset.labels  # some datasets use `.labels`
+    
+    # 2) bucket indices by class
+    idx_by_class = defaultdict(list)
+    for idx, lbl in enumerate(labels):
+        idx_by_class[int(lbl)].append(idx)
+    
+    random.seed(seed)
+    train_idxs, val_idxs = [], []
+    for cls, idxs in idx_by_class.items():
+        random.shuffle(idxs)
+        split = int(len(idxs) * pct)
+        train_idxs.extend(idxs[:split])
+        val_idxs.extend(idxs[split:])
+    
+    subset_a = Subset(dataset, train_idxs)
+    subset_b = Subset(dataset, val_idxs)
+    return subset_a, subset_b
 
 class CurveMLP(Module):
     def __init__(self, in_features, out_features, bias = True, hidden_dim= 32):
@@ -61,91 +107,47 @@ class CurveMLP(Module):
 
 
 
-    def fit(self, train_loader, test_loader, config, model1: Module, model2: Module, device="cpu"):
-        self.to(device)
-        optimizer = optim.SGD(
-            self.mlp.parameters(),           # ← only update mlp
-            lr=config.learning_rate,
-            momentum=config.momentum,
-            weight_decay=config.weight_decay
-        )
-        criterion = nn.CrossEntropyLoss()
+    def fit(self, training_buffer: DataLoader , test_loader: DataLoader, cfg: ExperimentConfig,
+                model1: Module, model2: Module):
+            device = cfg.train.device
+            self.to(device)
+            opt = optim.SGD(self.mlp.parameters(),
+                            lr=cfg.curve.learning_rate,
+                            momentum=cfg.curve.momentum,
+                            weight_decay=cfg.curve.weight_decay)
+            crit = nn.CrossEntropyLoss()
 
-        # Define interpolation points
-        interpolation_points = torch.tensor([0.5], device=device)
-        #interpolation_points = torch.rand(10, device=device)  # Generate 10 random values between 0 and 1
-        flat1 = parameters_to_vector(model1.parameters())
-        flat2 = parameters_to_vector(model2.parameters())
-        specs = [(n, p.numel()) for n, p in model1.named_parameters()]
+            # prepare weights once
+            flat1 = parameters_to_vector(model1.parameters())
+            flat2 = parameters_to_vector(model2.parameters())
+            specs = [(n, p.numel()) for n, p in model1.named_parameters()]
 
-        run = wandb.init(
-            entity = "louis-barinka-eth-z-rich",
-            project="Model Path Fusion for Continual Learning",
+            run = wandb.init(entity=cfg.wandb.entity,
+                            project=cfg.wandb.project,
+                            config=cfg)
 
-            config={
-                "device": "cpu", 
-                "learning_rate": config.learning_rate,
-                "epochs": config.epochs,
-                "Optimizer": "SGD",
-                "Buffer size in batches": len(train_loader),
-                #"interpolation_points": interpolation_points.tolist()
-                "interpolation_points": interpolation_points,
-                "Dataset": "MNIST"
-            }
-        )
-
-        for epoch in range(config.epochs):
-            # Training phase
-            total_loss = 0.0
-            total_correct = 0
-            total_samples = 0
-
-            for batch_idx, (inputs, targets) in enumerate(train_loader):
-                inputs, targets = inputs.to(device), targets.to(device)
-                
-                # Zero gradients
-                optimizer.zero_grad()
-                
-                # Initialize batch loss
-                batch_loss = 0.0
-                #interpolation_points =  torch.tensor([0.5])
-                # interpolation_points =  torch.rand(6, device=device)
-                # For each interpolation point
-                for t in interpolation_points:
-                    # Get the interpolated weights and perform forward pass in one go
-                    w_interp = self(t, flat1, flat2)
-                    interp_state = build_state_dict(w_interp, specs, model1)
-                    outputs    = functional_call(model1, interp_state, (inputs,))
-                    loss       = criterion(outputs, targets)
-                    batch_loss += loss
-
-                    
-                    # Calculate accuracy
-                    _, predicted = outputs.max(1)
-                    total_correct += predicted.eq(targets).sum().item()
-                    total_samples += targets.size(0)
-                
-                # Average loss over interpolation points
-                batch_loss = batch_loss / len(interpolation_points)
-                
-                # Backward pass
-                batch_loss.backward()
-                optimizer.step()
-                
-                total_loss += batch_loss.item()
-                
-                if batch_idx % 100 == 0:
-                    print(f'Epoch: {epoch}, Batch: {batch_idx}, Loss: {batch_loss.item():.4f}')
-            # Print epoch statistics
-            avg_loss = total_loss / len(train_loader)
-            accuracy = 100. * total_correct / total_samples
-            print(f'Epoch: {epoch}, Average Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
-            
-            wandb.log({
-                "epoch": epoch, 
-                "average Loss": avg_loss,
-                "accuracy": accuracy
-            })
+            for epoch in range(cfg.curve.epochs):
+                tot_loss = tot_corr = tot_samples = 0
+                for step, (x, y) in enumerate(train_loader):
+                    x, y = x.to(device), y.to(device)
+                    opt.zero_grad()
+                    loss = 0.0
+                    for t in cfg.curve.interpolation_points:
+                        w_interp = self(t, flat1, flat2)
+                        state = build_state_dict(w_interp, specs, model1)
+                        out   = functional_call(model1, state, (x,))
+                        loss += crit(out, y)
+                        _, pred = out.max(1)
+                        tot_corr += pred.eq(y).sum().item()
+                        tot_samples += y.size(0)
+                    loss = loss / len(cfg.curve.interpolation_points)
+                    loss.backward(); opt.step()
+                    tot_loss += loss.item()
+                    if step % cfg.wandb.log_every_n_steps == 0:
+                        print(f"E{epoch} S{step} L{loss:.4f}")
+                acc = 100*tot_corr/tot_samples
+                print(f"[Epoch {epoch}] loss={tot_loss/len(train_loader):.4f} acc={acc:.2f}%")
+                wandb.log({"epoch": epoch, "loss": tot_loss/len(train_loader), "acc": acc})
 
 def build_state_dict(w_flat: torch.Tensor,
                      specs: list[tuple[str,int]],
