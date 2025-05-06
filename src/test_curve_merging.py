@@ -14,18 +14,18 @@ import argparse
 import copy
 from tqdm import tqdm
 import numpy as np
-import yaml # Import YAML library
+import yaml
 
 from data import double_loaders, create_fused_loader
 from models import fcmodel
 from curve_merging import (
-    train_model as train_base_model, # Rename to avoid clash
+    train_model as train_base_model,
     curve_ensembling,
     evaluate_model
 )
 from curves_MLP import CurveMLP
 
-# Helper function to save models consistently
+
 def save_checkpoint(model, config_dict, save_path, is_curve_mlp=False, curve_mlp_hidden_dim=None):
     """Saves model state_dict along with configuration."""
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -84,21 +84,34 @@ def main(config): # Accept loaded config dictionary
         'hidden_dims': config['hidden_dims'],
         'output_dim': output_dim
     }
+
+    # Initialize Model A with the original seed
+    print(f"Initializing Model A with seed: {config['seed']}")
+    torch.manual_seed(config['seed'])
+    np.random.seed(config['seed'])
+    if torch.cuda.is_available() and config['use_cuda']:
+        torch.cuda.manual_seed_all(config['seed'])
     model_A = fcmodel.FCModelBase(**model_config).to(device)
+
+    # Initialize Model B with a different seed
+    seed_B = config['seed'] + 1
+    print(f"Initializing Model B with seed: {seed_B}")
+    torch.manual_seed(seed_B)
+    np.random.seed(seed_B)
+    if torch.cuda.is_available() and config['use_cuda']:
+        torch.cuda.manual_seed_all(seed_B)
     model_B = fcmodel.FCModelBase(**model_config).to(device)
 
     model_A_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_model_A.pth")
     model_B_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_model_B.pth")
 
     # --- Train/Load Base Models ---
-    # Define a base config for training (can be simple if train_base_model doesn't use much)
-    # Use a simple Namespace or dict for base_train_config if CurveConfig isn't needed
-    base_train_config = argparse.Namespace(
-        learning_rate=config['base_model_lr'],
-        momentum=config.get('momentum', 0.9), # Use .get for safety
-        weight_decay=config.get('weight_decay', 5e-4)
-        # Add other fields train_base_model might need from config
-    )
+    base_train_config_dict = {
+        'learning_rate': config['base_model_lr'],
+        'optimizer': config['optimizer'],
+        'optimizer_momentum': config.get('optimizer_momentum', 0.9),
+        'optimizer_weight_decay': config.get('optimizer_weight_decay', 5e-4)
+    }
 
     if os.path.exists(model_A_path) and not config['force_retrain']:
         print(f"Loading Model A from {model_A_path}")
@@ -108,13 +121,13 @@ def main(config): # Accept loaded config dictionary
     else:
         print("Training Model A...")
         train_base_model(
-            config=base_train_config, # Pass necessary config fields
-        model=model_A,
-        train_loader=data_loaders['trainA'],
-        test_loader=data_loaders['test'],
-            epochs=config['base_model_epochs'], # Use config value
-        device=device,
-            learning_rate=config['base_model_lr'] # Use config value
+            config=base_train_config_dict,
+            model=model_A,
+            train_loader=data_loaders['trainA'],
+            test_loader=data_loaders['test'],
+            epochs=config['base_model_epochs'],
+            device=device,
+            learning_rate=config['base_model_lr']
         )
         save_checkpoint(model_A, model_config, model_A_path)
 
@@ -125,13 +138,13 @@ def main(config): # Accept loaded config dictionary
     else:
         print("Training Model B...")
         train_base_model(
-            config=base_train_config,
-        model=model_B,
-        train_loader=data_loaders['trainB'],
-        test_loader=data_loaders['test'],
-            epochs=config['base_model_epochs'], # Use config value
+            config=base_train_config_dict,
+            model=model_B,
+            train_loader=data_loaders['trainB'],
+            test_loader=data_loaders['test'],
+            epochs=config['base_model_epochs'],
             device=device,
-            learning_rate=config['base_model_lr'] # Use config value
+            learning_rate=config['base_model_lr']
         )
         save_checkpoint(model_B, model_config, model_B_path)
 
@@ -145,22 +158,25 @@ def main(config): # Accept loaded config dictionary
     print("\nTraining Bezier Curve (CurveNet)...")
     bezier_curve_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_bezier_curve.pth")
 
-    # Create a target model instance for curve_ensembling
+    config['curve_checkpoint_path'] = bezier_curve_path
+
     target_model_bezier = fcmodel.FCModelBase(**model_config).to(device)
 
-    # Prepare config dictionary for curve_ensembling
-    bezier_train_config_dict = {
+    # Prepare config dictionary for curve_ensembling (this dict is used for parameters *within* curve_ensembling,
+    # but the main 'config' object is what curve_ensembling uses to find 'curve_checkpoint_path')
+    bezier_train_config_dict = { # This dict itself isn't directly passed for saving path lookup by curve_ensembling
         'model': config['model'],
         'epochs': config['bezier_epochs'],
         'learning_rate': config['bezier_lr'],
-        'momentum': config['optimizer_momentum'],
-        'weight_decay': config['optimizer_weight_decay'],
+        'optimizer': config['optimizer'],
+        'optimizer_momentum': config['optimizer_momentum'],
+        'optimizer_weight_decay': config['optimizer_weight_decay'],
         'num_bends': config['bezier_num_bends'],
         'curve': config['curve'],
         'fix_start': config['bezier_fix_start'],
         'fix_end': config['bezier_fix_end'],
         'num_points': config['bezier_num_points'],
-        'curve_checkpoint_path': bezier_curve_path,
+        # 'curve_checkpoint_path': bezier_curve_path, # This was here, but not used by curve_ensembling for saving
         'dataset': config['dataset'],
         'input_dim': input_dim,
         'hidden_dims': config['hidden_dims'],
@@ -168,8 +184,11 @@ def main(config): # Accept loaded config dictionary
         'batch_size': config['batch_size']
     }
 
-    bezier_curve_model = curve_ensembling(
-        config=config,
+
+    # curve_ensembling will now use config['curve_checkpoint_path'] to save the CurveNet model.
+    # The returned model is the target_model_bezier with its weights set to the curve's midpoint.
+    bezier_midpoint_model = curve_ensembling(
+        config=config, # Pass the main config, which now includes 'curve_checkpoint_path'
         models=[model_A, model_B],
         target_model=target_model_bezier,
         train_loader=fused_loader,
@@ -179,8 +198,14 @@ def main(config): # Accept loaded config dictionary
         input_dim=input_dim
     )
 
-    acc_bezier_final = evaluate_model(bezier_curve_model, data_loaders['test'], device)
-    print(f"Bezier Curve (Final State) Accuracy: {acc_bezier_final:.2f}%")
+    # Evaluate the accuracy of the model at the midpoint of the Bezier curve
+    acc_bezier_final = evaluate_model(bezier_midpoint_model, data_loaders['test'], device)
+    print(f"Bezier Curve (Midpoint Model) Accuracy: {acc_bezier_final:.2f}%")
+    
+    # The CurveNet itself is saved by curve_ensembling to bezier_curve_path.
+    # The following line would overwrite it with the midpoint model, which caused the loading error.
+    # If you need to save the midpoint model state separately, use a different path.
+    # save_checkpoint(bezier_midpoint_model, bezier_train_config_dict, bezier_curve_path) # REMOVED/COMMENTED
 
     # --- MLP Curve Training ---
     print("\nTraining MLP Curve (CurveMLP)...")

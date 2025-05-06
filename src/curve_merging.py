@@ -176,7 +176,9 @@ def curve_ensembling(
     num_points_sampling = config['bezier_num_points']
     steps = np.linspace(0.0, 1.0, num_points_sampling)
     middle_step = steps[len(steps) // 2]
-    fusion_weights = curve_model.weights(torch.tensor([middle_step]))
+    # Ensure t is on the same device as the curve_model
+    t_tensor = torch.tensor([middle_step], device=device)
+    fusion_weights = curve_model.weights(t_tensor)
     
     # Update merged model parameters
     offset = 0

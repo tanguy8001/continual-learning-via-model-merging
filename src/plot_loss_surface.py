@@ -112,7 +112,7 @@ def plot_loss_surface_mlp(args):
     num_params = w0.numel()
 
     # Determine config for CurveMLP
-    curve_hidden_dim = 32 # Default
+    curve_hidden_dim = 32
     if isinstance(state_dict_curve, dict) and 'config' in state_dict_curve and 'hidden_dim' in state_dict_curve['config']:
         curve_hidden_dim = state_dict_curve['config']['hidden_dim']
     elif isinstance(state_dict_curve, dict) and 'hidden_dim' in state_dict_curve: # Check if hidden_dim is top-level key
@@ -264,23 +264,20 @@ def plot_loss_surface_mlp(args):
                     print(f"w_mid shape: {w_mid.shape}, u_direction shape: {u_direction.shape}, v_direction shape: {v_direction.shape}")
                     raise
 
-
                 # Build state dict from flat vector
                 try:
-                    # build_state_dict might need shapes, not numel. Adjust if necessary based on its implementation.
-                    current_state = build_state_dict(w, specs, eval_model) # Pass eval_model instance
+                    current_state = build_state_dict(w, specs, eval_model)
                 except Exception as e:
                      print(f"Error calling build_state_dict: {e}")
                      print(f"w shape: {w.shape}")
-                     # print(f"specs: {specs}") # Can be very long
                      raise
 
 
                 # Evaluate loss using functional_call
                 total_loss = 0.0
                 total_samples = 0
-                batches_processed = 0 # Keep track of batches used for this grid point
-                max_batches_per_point = 5 # Define the limit
+                batches_processed = 0
+                max_batches_per_point = len(testloader)
 
                 # Loop through batches, but stop after max_batches_per_point
                 for k, (inputs, targets) in enumerate(testloader):
@@ -301,7 +298,7 @@ def plot_loss_surface_mlp(args):
                         # Check the FLATTENED input shape
                         if inputs_flat.shape[1] != config_A['input_dim']:
                              print(f"Flattened input shape mismatch in batch {k}: Expected {config_A['input_dim']}, Got {inputs_flat.shape[1]}. Original shape: {original_shape}")
-                             continue # Skip batch or handle error
+                             continue
 
                         # Pass the FLATTENED input to functional_call
                         outputs = functional_call(eval_model, current_state, (inputs_flat,))
@@ -313,13 +310,13 @@ def plot_loss_surface_mlp(args):
                          print(f"Input shape: {inputs.shape}, Target shape: {targets.shape}, Output shape: {outputs.shape if 'outputs' in locals() else 'N/A'}")
                          raise
 
-                    batches_processed += 1 # Increment the counter
+                    batches_processed += 1
 
                 if total_samples == 0:
-                     loss_surface[j, i] = float('nan') # Or some indicator of no data
+                     loss_surface[j, i] = float('nan')
                      print(f"Warning: No samples processed for grid point ({i},{j})")
                 else:
-                    loss_surface[j, i] = total_loss / total_samples # Store average loss
+                    loss_surface[j, i] = total_loss / total_samples
             print(f"Column {i+1}/{args.resolution} evaluated.")
 
 
@@ -341,13 +338,7 @@ def plot_loss_surface_mlp(args):
 
     with torch.no_grad():
         for t in ts:
-            # Ensure curve_mlp call is correct
-            try:
-                 w_t = curve_mlp(t, w0, w1)
-            except TypeError:
-                 print("Error calling curve_mlp in projection loop. Ensure its forward method signature is correct.")
-                 # Example alternative: w_t = curve_mlp(t)
-                 raise
+            w_t = curve_mlp(t, w0, w1)
             delta = w_t - w_mid
             x_proj = torch.dot(delta, u_direction) / norm_u_sq if norm_u_sq > 0 else 0
             y_proj = torch.dot(delta, v_direction) / norm_v_sq if norm_v_sq > 0 else 0
@@ -377,7 +368,7 @@ def plot_loss_surface_mlp(args):
     # w_mid projects to (0, 0) by definition of the coordinate system
     xmid_scaled, ymid_scaled = 0.0, 0.0
 
-    # --- 5b. Calculate and Project Optional CurveNet Path ---
+    # --- 5b. Calculate and Project CurveNet Path ---
     curve_net_points_x = []
     curve_net_points_y = []
     if curve_net_model:
@@ -408,7 +399,6 @@ def plot_loss_surface_mlp(args):
             print(f"DEBUG: Plot Y limits: [{args.ymin}, {args.ymax}]")
         else:
             print("DEBUG: CurveNet coordinate lists are empty. Was projection successful?")
-        # ----------------------------------------------------
 
     # --- 6. Plot ---
     print("Plotting...")
@@ -431,14 +421,18 @@ def plot_loss_surface_mlp(args):
     # Plot the projected curve
     plt.plot(curve_mlp_points_x, curve_mlp_points_y, marker='.', linestyle='-', color='red', label='CurveMLP Path')
 
-    # Plot the projected CurveNet path if available
-    if curve_net_points_x and curve_net_points_y: # Check if projection was successful
+    # Plot the projected CurveNet path
+    if curve_net_points_x and curve_net_points_y:
         print("Plotting CurveNet path...")
         plt.plot(curve_net_points_x, curve_net_points_y, marker='x', linestyle='--', color='purple', label='CurveNet Path')
 
     # Plot projected model points
-    plt.scatter([x0_scaled], [y0_scaled], marker='o', s=100, color='blue', label='Model A (w0)')
-    plt.scatter([x1_scaled], [y1_scaled], marker='o', s=100, color='green', label='Model B (w1)')
+    plt.scatter([x0_scaled.item() if torch.is_tensor(x0_scaled) else x0_scaled], 
+                [y0_scaled.item() if torch.is_tensor(y0_scaled) else y0_scaled], 
+                marker='o', s=100, color='blue', label='Model A (w0)')
+    plt.scatter([x1_scaled.item() if torch.is_tensor(x1_scaled) else x1_scaled], 
+                [y1_scaled.item() if torch.is_tensor(y1_scaled) else y1_scaled], 
+                marker='o', s=100, color='green', label='Model B (w1)')
     plt.scatter([xmid_scaled], [ymid_scaled], marker='*', s=150, color='orange', label='Midpoint w(0.5)')
 
     plt.title('Loss Surface with CurveMLP Path')
@@ -463,7 +457,6 @@ if __name__ == '__main__':
 
     # --- Add config file argument ---
     parser.add_argument('--config_path', type=str, default='src/config.yaml', help='Path to the YAML configuration file')
-    # --- ----------------------- ---
 
     parser.add_argument('--model_a_path', type=str, required=True, help='Path to model A state dict (.pth)')
     parser.add_argument('--model_b_path', type=str, required=True, help='Path to model B state dict (.pth)')
@@ -482,8 +475,8 @@ if __name__ == '__main__':
     # Plotting arguments
     parser.add_argument('--xmin', type=float, default=-3.0, help='Min x range')
     parser.add_argument('--xmax', type=float, default=3.0, help='Max x range')
-    parser.add_argument('--ymin', type=float, default=-3.2, help='Min y range')
-    parser.add_argument('--ymax', type=float, default=3.2, help='Max y range')
+    parser.add_argument('--ymin', type=float, default=-3.4, help='Min y range')
+    parser.add_argument('--ymax', type=float, default=3.4, help='Max y range')
     parser.add_argument('--resolution', type=int, default=20, help='Grid resolution')
     parser.add_argument('--output_plot_path', type=str, default='curvemlp_loss_surface.png', help='Output path for the plot')
     parser.add_argument('--gpu_ids', type=str, default=None, help='GPU ID(s) to use (e.g., "0" or "0,1"). None uses CPU.')
@@ -492,35 +485,22 @@ if __name__ == '__main__':
     parser.add_argument('--curve_net_ckpt', type=str, default=None, help='Path to trained CurveNet state dict (.pth) (optional)')
     parser.add_argument('--curve_type', type=str, default='Bezier', help='Type of curve used for CurveNet (e.g., Bezier)')
     parser.add_argument('--curve_net_num_bends', type=int, default=3, help='Number of bends for CurveNet')
-    parser.add_argument('--curve_net_base_model', type=str, # default='FCModelBase', # Default loaded from config if available
-                        help='Base model class name used for CurveNet architecture (must exist in models.fcmodel)')
+    parser.add_argument('--curve_net_base_model', type=str, default='FCModelBase', help='Base model class name used for CurveNet architecture (must exist in models.fcmodel)')
 
-    # --- Argument for num_workers (can be loaded from config) ---
-    parser.add_argument('--num_workers', type=int, default=None, # Default to None, will be loaded from config
+    parser.add_argument('--num_workers', type=int, default=None,
                         help='Number of data loading workers (overrides config if set)')
-    # --- ---------------------------------------------------- ---
-
-    # --- Argument for transform (can be loaded from config) ---
-    parser.add_argument('--transform', type=str, default=None, # Default to None, will be loaded from config
+    parser.add_argument('--transform', type=str, default=None,
                         help='Transform type to use (e.g., MLPNET, default from config)')
-    # --- ---------------------------------------------------- ---
-
-    # --- Argument for mnist_digit (can be loaded from config) ---
-    parser.add_argument('--mnist_digit', type=int, default=None, # Default to None, will be loaded from config
+    parser.add_argument('--mnist_digit', type=int, default=None,
                         help='MNIST digit for split loading (default from config)')
-    # --- ---------------------------------------------------- ---
 
-    # --- Argument for cifar_class (can be loaded from config) ---
-    parser.add_argument('--cifar_class', type=int, default=None, # Default to None, will be loaded from config
+    parser.add_argument('--cifar_class', type=int, default=None,
                         help='CIFAR class index for split loading (default from config)')
-    # --- ---------------------------------------------------- ---
 
 
     # --- Initial parse to get config path ---
-    # We parse known args first to get the config file path
     temp_args, unknown = parser.parse_known_args()
 
-    # --- Load config from YAML file ---
     config = {}
     if os.path.exists(temp_args.config_path):
         print(f"Loading configuration from: {temp_args.config_path}")
@@ -531,11 +511,8 @@ if __name__ == '__main__':
                 print(f"Error loading YAML config: {exc}")
     else:
         print(f"Warning: Config file not found at {temp_args.config_path}. Using command-line defaults only.")
-    # --- -------------------------- ---
 
     # --- Set defaults from config before final parse ---
-    # Important: Only set parser defaults if the corresponding config key exists
-    # This prevents errors if config keys are missing
     defaults_from_config = {}
     config_mapping = {
         'input_dim': 'input_dim',
@@ -548,10 +525,9 @@ if __name__ == '__main__':
         'transform': 'transform',
         'mnist_digit': 'mnist_digit',
         'cifar_class': 'cifar_class',
-        'curve': 'curve_type', # YAML 'curve' maps to arg 'curve_type'
-        'bezier_num_bends': 'curve_net_num_bends', # YAML 'bezier_num_bends' maps to arg 'curve_net_num_bends'
-        'model': 'curve_net_base_model', # YAML 'model' maps to 'curve_net_base_model'
-        # Add other mappings as needed
+        'curve': 'curve_type',
+        'bezier_num_bends': 'curve_net_num_bends',
+        'model': 'curve_net_base_model',
     }
 
     for config_key, arg_name in config_mapping.items():
@@ -559,13 +535,7 @@ if __name__ == '__main__':
             defaults_from_config[arg_name] = config[config_key]
 
     parser.set_defaults(**defaults_from_config)
-    # --- --------------------------------------- ---
-
-    # --- Final parse with config defaults applied ---
     args = parser.parse_args()
-    # --- ---------------------------------------- ---
-
-    # Convert hidden_dims from list of strings/ints to list of ints if needed
     if args.hidden_dims and isinstance(args.hidden_dims, list):
         args.hidden_dims = [int(d) for d in args.hidden_dims]
 

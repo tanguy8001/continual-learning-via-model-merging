@@ -2,7 +2,7 @@
 model: FCModel
 dataset: MNIST # 'MNIST' or 'CIFAR10'
 data_path: './data'
-checkpoint_dir: './checkpoints/combined_curves'
+checkpoint_dir: './src/checkpoints'
 seed: 42
 use_cuda: True
 force_retrain: False
