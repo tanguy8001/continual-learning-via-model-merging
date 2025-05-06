@@ -1,0 +1,40 @@
+# General Settings
+model: FCModel
+dataset: MNIST # 'MNIST' or 'CIFAR10'
+data_path: './data'
+checkpoint_dir: './checkpoints/combined_curves'
+seed: 42
+use_cuda: True
+force_retrain: False
+num_workers: 2
+
+# Model Architecture (FCModelBase)
+input_dim: null # Auto-detected based on dataset if null
+hidden_dims: [400, 200, 100]
+mnist_digit: 4 # Digit for MNIST split (used by double_loaders)
+cifar_class: 0 # Class index for CIFAR10 split (used by double_loaders)
+transform: 'MLPNET' # Transform type (see data.py)
+
+# Training Hyperparameters
+batch_size: 128
+optimizer: 'SGD' # Default optimizer type ('SGD' or 'Adam')
+optimizer_momentum: 0.9
+optimizer_weight_decay: 0.0005
+
+# Base Models (A & B)
+base_model_epochs: 10
+base_model_lr: 0.007
+
+# Bezier Curve (CurveNet)
+bezier_epochs: 10
+bezier_lr: 0.01
+bezier_num_bends: 3
+curve: 'Bezier'
+bezier_fix_start: True # Whether to fix the start point of the Bezier curve
+bezier_fix_end: True   # Whether to fix the end point of the Bezier curve
+bezier_num_points: 61 # Number of points to sample along the curve for evaluation/saving
+
+# MLP Curve (CurveMLP)
+mlp_epochs: 10
+mlp_lr: 0.001
+mlp_hidden_dim: 32

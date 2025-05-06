@@ -1,872 +1,275 @@
 """
-Trains two models on a heterogeneous dataset split (MNIST or CIFAR10).
-Then merges the trained models using curve ensembling.
-Saves the checkpoint for the computed minimum-loss curve via the curve_ensembling function.
+Trains two base models (A and B) on disjoint data splits (e.g., MNIST or CIFAR10).
+Then computes and saves two types of connecting curves between them:
+1. A Bezier curve trained using `curve_merging.curve_ensembling`.
+2. An MLP-based curve trained using `curves_MLP.CurveMLP`.
+
+Saves Model A, Model B, the Bezier CurveNet, and the CurveMLP checkpoints
+to a specified directory for later use (e.g., by `plot_loss_surface.py`).
 """
 
 import os
 import torch
-from torch import nn
-import torch.nn.functional as F
-from torchvision import datasets, transforms
-from torch.utils.data import Subset, ConcatDataset, DataLoader
-import matplotlib.pyplot as plt
-import numpy as np
+import argparse
 import copy
 from tqdm import tqdm
+import numpy as np
+import yaml # Import YAML library
 
-from data import double_loaders
-from models import mlpnet, fcmodel
+from data import double_loaders, create_fused_loader
+from models import fcmodel
 from curve_merging import (
-    train_model,
+    train_model as train_base_model, # Rename to avoid clash
     curve_ensembling,
-    CurveConfig
+    evaluate_model
 )
+from curves_MLP import CurveMLP
 
-class MNIST:
-    """MNIST-specific transforms"""
-    def __init__(self):
-        self.train = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ])
-        self.test = self.train
+# Helper function to save models consistently
+def save_checkpoint(model, config_dict, save_path, is_curve_mlp=False, curve_mlp_hidden_dim=None):
+    """Saves model state_dict along with configuration."""
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'config': config_dict # Store relevant config
+    }
+    # Add specific CurveMLP config if needed
+    if is_curve_mlp and curve_mlp_hidden_dim is not None:
+         checkpoint['config']['hidden_dim'] = curve_mlp_hidden_dim
 
-class Transforms:
-    """Container for dataset-specific transforms."""
-    MNIST = MNIST()
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved to {save_path}")
 
-def evaluate_model(model, test_loader, device):
-    """Evaluate model accuracy on test set."""
-    model.eval()
-    correct = 0
-    total = 0
-    
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    
-    return 100 * correct / total
-
-def create_fused_loader(loader_A, loader_B, batch_size, num_workers):
-    """Create a fused data loader from two separate loaders."""
-    # Get underlying datasets
-    dataset_A = loader_A.dataset
-    dataset_B = loader_B.dataset
-    
-    # Combine datasets
-    fused_dataset = ConcatDataset([dataset_A, dataset_B])
-    
-    # Create new loader with combined data
-    fused_loader = DataLoader(
-        fused_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=True
-    )
-    
-    return fused_loader
-
-def test_curve_merging():
-    """Main test function for curve merging."""
-    # Setup
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def main(config): # Accept loaded config dictionary
+    # --- Setup ---
+    device = torch.device("cuda" if torch.cuda.is_available() and config['use_cuda'] else "cpu")
     print(f"Using device: {device}")
     
-    model_epochs = 20
-    #config = CurveConfig( 
-    #    learning_rate=0.007
-    #)
-    config = CurveConfig( 
-        learning_rate=0.05
-    )
-
-    # Parameters
-    batch_size = 128
-    num_workers = 2
-    hidden_dims = config.hidden_dims
-    num_classes = 10
-    
-    
-    # Create data directory if it doesn't exist
-    data_path = os.path.join(os.getcwd(), "data")
+    os.makedirs(config['checkpoint_dir'], exist_ok=True)
+    data_path = os.path.join(config['data_path'], config['dataset'])
     os.makedirs(data_path, exist_ok=True)
     
-    #data_loaders, num_classes = double_loaders(
-    #    dataset="MNIST",
-    #    path=data_path,
-    #    batch_size=batch_size,
-    #    num_workers=num_workers,
-    #    transform_name="MLPNET",
-    #    digit=test_digit
-    #)
-
+    # --- Data Loading ---
     data_loaders, num_classes = double_loaders(
-        dataset=config.dataset,
-        path=data_path,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        transform_name=config.transform,
-        digit=config.test_digit,
-        cifar_class=config.cifar_class,
+        dataset=config['dataset'],
+        path=config['data_path'], # Use root data path
+        batch_size=config['batch_size'],
+        num_workers=config['num_workers'],
+        transform_name=config['transform'], # Get transform based on dataset/model
+        digit=config['mnist_digit'], # Specific digit for MNIST split
+        cifar_class=config['cifar_class'] # Specific class for CIFAR split
     )
-    
-    # Create fused loader for curve training
+
     fused_loader = create_fused_loader(
         data_loaders['trainA'],
         data_loaders['trainB'],
-        batch_size=batch_size,
-        num_workers=num_workers
-    )
-    
-    # Create models
-    #model_A = mlpnet.MlpNetBase(input_dim=input_dim, num_classes=num_classes).to(device)
-    #model_B = mlpnet.MlpNetBase(input_dim=input_dim, num_classes=num_classes).to(device)
-    model_A = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=hidden_dims,
-        output_dim=num_classes,
+        batch_size=config['batch_size'],
+        num_workers=config['num_workers']
     )
 
-    model_B = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=hidden_dims,
-        output_dim=num_classes,
-    )
+    # Determine input dimension based on dataset
+    if config['dataset'] == 'MNIST':
+        input_dim = 784
+    elif config['dataset'] == 'CIFAR10':
+        input_dim = 3 * 32 * 32 # 3072
+    else:
+        raise ValueError(f"Unsupported dataset: {config['dataset']}")
+    # Allow override from config if provided
+    input_dim = config['input_dim'] if config['input_dim'] else input_dim
+    output_dim = num_classes
 
-    target_model = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=hidden_dims,
-        output_dim=num_classes
-    )
-    
-    # Training history
-    history = {
-        'model_A': [],
-        'model_B': [],
-        'merged': []
+    # --- Model Initialization ---
+    model_config = {
+        'input_dim': input_dim,
+        'hidden_dims': config['hidden_dims'],
+        'output_dim': output_dim
     }
+    model_A = fcmodel.FCModelBase(**model_config).to(device)
+    model_B = fcmodel.FCModelBase(**model_config).to(device)
 
+    model_A_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_model_A.pth")
+    model_B_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_model_B.pth")
 
-    print("\nTraining Model A...")
-    history['model_A'] = train_and_evaluate_model(
+    # --- Train/Load Base Models ---
+    # Define a base config for training (can be simple if train_base_model doesn't use much)
+    # Use a simple Namespace or dict for base_train_config if CurveConfig isn't needed
+    base_train_config = argparse.Namespace(
+        learning_rate=config['base_model_lr'],
+        momentum=config.get('momentum', 0.9), # Use .get for safety
+        weight_decay=config.get('weight_decay', 5e-4)
+        # Add other fields train_base_model might need from config
+    )
+
+    if os.path.exists(model_A_path) and not config['force_retrain']:
+        print(f"Loading Model A from {model_A_path}")
+        checkpoint_A = torch.load(model_A_path, map_location=device)
+        # TODO: Verify if saved config in checkpoint matches current model_config if needed
+        model_A.load_state_dict(checkpoint_A['model_state_dict'])
+    else:
+        print("Training Model A...")
+        train_base_model(
+            config=base_train_config, # Pass necessary config fields
         model=model_A,
         train_loader=data_loaders['trainA'],
         test_loader=data_loaders['test'],
-        config=config,
-        model_path="C:/Users/tangu/OneDrive/Documents/ETHZ/Deep Learning/continual-learning-via-model-merging/checkpoints/model_A",
+            epochs=config['base_model_epochs'], # Use config value
         device=device,
-        epochs=model_epochs
-    )
+            learning_rate=config['base_model_lr'] # Use config value
+        )
+        save_checkpoint(model_A, model_config, model_A_path)
 
-    print("\nTraining Model B...")
-    history['model_B'] = train_and_evaluate_model(
+    if os.path.exists(model_B_path) and not config['force_retrain']:
+        print(f"Loading Model B from {model_B_path}")
+        checkpoint_B = torch.load(model_B_path, map_location=device)
+        model_B.load_state_dict(checkpoint_B['model_state_dict'])
+    else:
+        print("Training Model B...")
+        train_base_model(
+            config=base_train_config,
         model=model_B,
         train_loader=data_loaders['trainB'],
         test_loader=data_loaders['test'],
-        config=config,
-        model_path="C:/Users/tangu/OneDrive/Documents/ETHZ/Deep Learning/continual-learning-via-model-merging/checkpoints/model_B",
-        device=device,
-        epochs=model_epochs
-    )
-    
-    # Merge models
-    print("\nMerging models...")
-    config = CurveConfig(
-        epochs=10,
-        learning_rate=0.07,
-        num_bends=3,
-        curve="Bezier",
-        input_dim=config.input_dim,
-    )
-    
-    merged_model = curve_ensembling(
-        config=config,
-        models=[model_A, model_B],
-        target_model=target_model,
-        train_loader=fused_loader,  # Use fused loader for curve training
-        test_loader=data_loaders['test'],
-        device=device,
-        num_classes=num_classes,
-        input_dim=config.input_dim
-    ).to(device)
-    
-    # Evaluate merged model
-    merged_acc = evaluate_model(merged_model, data_loaders['test'], device)
-    history['merged'].append(merged_acc)
-    print(f"\nMerged Model Accuracy: {merged_acc:.2f}%")
-    
-    ## Plot results
-    #plt.figure(figsize=(12, 6))
-    #plt.plot(history['model_A'], label='Model A')
-    #plt.plot(history['model_B'], label='Model B')
-    #plt.axhline(y=merged_acc, color='r', linestyle='--', label='Merged Model')
-    #plt.title('Model Performance During Training and After Merging')
-    #plt.xlabel('Epoch')
-    #plt.ylabel('Accuracy (%)')
-    #plt.legend()
-    #plt.grid(True)
-    #plt.show()
-    
-    # Detailed evaluation
-    print("\nDetailed Evaluation:")
-    print(f"Model A final accuracy: {history['model_A'][-1]:.2f}%")
-    print(f"Model B final accuracy: {history['model_B'][-1]:.2f}%")
-    print(f"Merged model accuracy: {merged_acc:.2f}%")
-    
-    return history, merged_model
-
-
-def train_and_evaluate_model(model, train_loader, test_loader, config, model_path, device, epochs):
-    """
-    Trains a model, evaluates it, and saves the best and final models.
-
-    Args:
-        model: The model to train.
-        train_loader: DataLoader for training data.
-        test_loader: DataLoader for testing/validation data.
-        config: Configuration dictionary for training.
-        model_path: Directory to save the model checkpoints.
-        device: The device (CPU/GPU) for training.
-        epochs: Number of epochs to train.
-    """
-    os.makedirs(model_path, exist_ok=True)
-    best_val_acc = 0
-    history = []
-
-    print(model)
-
-    for epoch in range(1, epochs + 1):
-        print(f"Epoch {epoch}/{epochs}")
-        
-        # Train the model for one epoch
-        train_model(
-            config,
-            model,
-            train_loader,
-            test_loader,
-            epochs=1,
+            epochs=config['base_model_epochs'], # Use config value
             device=device,
-            learning_rate=config.learning_rate
+            learning_rate=config['base_model_lr'] # Use config value
         )
-        
-        # Evaluate the model
-        val_acc = evaluate_model(model, test_loader, device)
-        history.append(val_acc)
-        print(f"Epoch {epoch}/{epochs}, Validation Accuracy: {val_acc:.2f}%")
-        
-        # Save the best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            save_path = os.path.join(model_path, 'best_val_acc_model.pth')
-            save_model(model, config, epoch, val_acc, save_path)
-            print(f"Best model saved at epoch {epoch} with validation accuracy {val_acc:.2f}%")
-    
-    # Save the final model
-    final_save_path = os.path.join(model_path, 'final_model.pth')
-    save_model(model, config, epochs, val_acc, final_save_path)
-    print(f"Final model saved after {epochs} epochs.")
-    
-    return history
+        save_checkpoint(model_B, model_config, model_B_path)
 
-def save_model(model, config, epoch, val_acc, save_path):
-    """
-    Saves the model checkpoint.
+    # Evaluate base models
+    acc_A = evaluate_model(model_A, data_loaders['test'], device)
+    acc_B = evaluate_model(model_B, data_loaders['test'], device)
+    print(f"\nModel A Final Accuracy: {acc_A:.2f}%")
+    print(f"Model B Final Accuracy: {acc_B:.2f}%")
 
-    Args:
-        model: The model to save.
-        config: Configuration dictionary.
-        epoch: Current epoch number.
-        val_acc: Validation accuracy at the time of saving.
-        save_path: Path to save the model checkpoint.
-    """
-    torch.save({
-        'epoch': epoch,
-        'val_acc': val_acc,
-        'test_acc': val_acc,
-        'model_state_dict': model.state_dict(),
-        'config': model.get_model_config() 
-    }, save_path)
+    # --- Bezier Curve Training ---
+    print("\nTraining Bezier Curve (CurveNet)...")
+    bezier_curve_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_bezier_curve.pth")
 
-class ODEFunc(nn.Module):
-    def __init__(self, param_dim):
-        super().__init__()
-        # Reduce network size to save memory
-        hidden_size = 128  # Reduced from 256
-        self.net = nn.Sequential(
-            nn.Linear(param_dim + 1, hidden_size),
-            nn.Tanh(),
-            nn.Linear(hidden_size, param_dim)
-        )
-        
-    def forward(self, t, y):
-        """t: time, y: parameters"""
-        # Ensure t is properly shaped for concatenation with y
-        if not torch.is_tensor(t):
-            t = torch.tensor(t).float()
-        
-        # Convert t to a 1D tensor with a single element
-        t = t.reshape(-1)
-        
-        # Make sure y is a 1D tensor
-        y_flat = y.reshape(-1)
-        
-        # Add t as an extra element to the parameters
-        # Use unsqueeze to add a batch dimension for the network
-        input_tensor = torch.cat([t, y_flat]).unsqueeze(0)
-        
-        # Forward through network and remove batch dimension
-        return self.net(input_tensor).squeeze(0)
+    # Create a target model instance for curve_ensembling
+    target_model_bezier = fcmodel.FCModelBase(**model_config).to(device)
 
-def compute_ode_loss(ode_func, model_template, theta_0, theta_1, dataloader, n_samples=10):
-    # Use torchdiffeq for ODE solving
-    from torchdiffeq import odeint
-    
-    # Sample timepoints
-    t_samples = torch.linspace(0, 1, n_samples)
-    
-    # Solve ODE
-    ode_solution = odeint(ode_func, theta_0, t_samples)
-    
-    # Compute loss
-    acc_loss = 0.0
-    endpoint_loss = torch.norm(ode_solution[0] - theta_0)**2 + torch.norm(ode_solution[-1] - theta_1)**2
-    
-    for i, theta_t in enumerate(ode_solution):
-        # Create model with these parameters
-        model = copy.deepcopy(model_template)
-        nn.utils.vector_to_parameters(theta_t, model.parameters())
-        
-        # Compute accuracy on batch
-        for x, y in dataloader:
-            output = model(x)
-            acc_loss += F.cross_entropy(output, y)
-    
-    # Dynamics regularization
-    reg_loss = 0.0
-    for t in torch.linspace(0, 1, 10):
-        t_tensor = torch.tensor([t])
-        theta_t = nn.utils.parameters_to_vector(model.parameters())
-        dtheta_dt = ode_func(t_tensor, theta_t)
-        reg_loss += torch.norm(dtheta_dt)**2
-    
-    return acc_loss + 0.1 * endpoint_loss + 0.01 * reg_loss
+    # Prepare config dictionary for curve_ensembling
+    bezier_train_config_dict = {
+        'model': config['model'],
+        'epochs': config['bezier_epochs'],
+        'learning_rate': config['bezier_lr'],
+        'momentum': config['optimizer_momentum'],
+        'weight_decay': config['optimizer_weight_decay'],
+        'num_bends': config['bezier_num_bends'],
+        'curve': config['curve'],
+        'fix_start': config['bezier_fix_start'],
+        'fix_end': config['bezier_fix_end'],
+        'num_points': config['bezier_num_points'],
+        'curve_checkpoint_path': bezier_curve_path,
+        'dataset': config['dataset'],
+        'input_dim': input_dim,
+        'hidden_dims': config['hidden_dims'],
+        'output_dim': output_dim,
+        'batch_size': config['batch_size']
+    }
 
-def test_ode_merging():
-    """Test Neural ODE approach for model merging."""
-    # Setup similar to test_curve_merging
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    
-    # Use the same configuration as in test_curve_merging but with smaller batch size
-    config = CurveConfig(
-        learning_rate=0.05,
-        batch_size=64  # Reduced batch size to save memory
-    )
-    
-    # Load data in the same way
-    data_path = os.path.join(os.getcwd(), "data")
-    os.makedirs(data_path, exist_ok=True)
-    
-    data_loaders, num_classes = double_loaders(
-        dataset=config.dataset,
-        path=data_path,
-        batch_size=config.batch_size,
-        num_workers=config.num_workers,
-        transform_name="MLPNET",
-        digit=config.test_digit,
-        cifar_class=config.cifar_class,
-    )
-    
-    # Create fused loader for training
-    fused_loader = create_fused_loader(
-        data_loaders['trainA'],
-        data_loaders['trainB'],
-        batch_size=config.batch_size,
-        num_workers=config.num_workers
-    )
-    
-    # Create models - same as in test_curve_merging
-    model_A = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
-    ).to(device)
-    
-    model_B = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
-    ).to(device)
-    
-    # Train models if needed
-    print("\nTraining Model A...")
-    train_model(
-        config,
-        model_A,
-        data_loaders['trainA'],
-        data_loaders['test'],
-        epochs=5,  # Fewer epochs to save time
+    bezier_curve_model = curve_ensembling(
+        config=config,
+        models=[model_A, model_B],
+        target_model=target_model_bezier,
+        train_loader=fused_loader,
+        test_loader=data_loaders['test'],
         device=device,
-        learning_rate=config.model_learning_rate
+        num_classes=output_dim,
+        input_dim=input_dim
     )
-    
-    print("\nTraining Model B...")
-    train_model(
-        config,
-        model_B,
-        data_loaders['trainB'],
-        data_loaders['test'],
-        epochs=5,  # Fewer epochs to save time
-        device=device,
-        learning_rate=config.model_learning_rate
-    )
-    
-    # Extract parameters as vectors
-    theta_0 = nn.utils.parameters_to_vector(model_A.parameters()).detach()
-    theta_1 = nn.utils.parameters_to_vector(model_B.parameters()).detach()
-    
-    # Initialize ODE function
-    param_dim = theta_0.numel()
-    ode_func = ODEFunc(param_dim).to(device)
-    
-    # Initialize target model for ODE approach
-    target_model_ode = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
-    ).to(device)
-    
-    # Train ODE function
-    from torchdiffeq import odeint
-    import gc
-    
-    optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.01)
-    n_epochs = 5  # Reduced number of epochs
-    n_time_samples = 3  # Reduced number of time samples
-    
-    # Epoch progress bar
-    for epoch in tqdm(range(n_epochs), desc="Training ODE function"):
-        ode_func.train()
-        
-        # Train for one epoch
-        epoch_loss = 0.0
-        batch_count = 0
-        
-        # Batch progress bar
-        train_bar = tqdm(fused_loader, desc=f"Epoch {epoch+1}/{n_epochs}", leave=False)
-        for x, y in train_bar:
-            x, y = x.to(device), y.to(device)
-            
-            optimizer.zero_grad()
-            
-            # Sample random time points - fewer points to save memory
-            t_samples = torch.linspace(0, 1, n_time_samples).to(device)
-            
-            # Solve ODE with lower tolerance for faster computation
-            theta_samples = odeint(
-                ode_func, 
-                theta_0, 
-                t_samples, 
-                method='dopri5',
-                options={'rtol': 1e-2, 'atol': 1e-2}  # Higher tolerance = less memory
-            )
-            
-            # Compute loss at each sampled point
-            total_loss = 0
-            for i, theta_t in enumerate(theta_samples):
-                # Create model with these parameters
-                nn.utils.vector_to_parameters(theta_t, target_model_ode.parameters())
-                
-                # Forward pass
-                outputs = target_model_ode(x)
-                loss = F.cross_entropy(outputs, y)
-                
-                # Add to total loss
-                total_loss += loss
-            
-            # Add endpoint constraints
-            endpoint_loss = torch.norm(theta_samples[0] - theta_0)**2 + torch.norm(theta_samples[-1] - theta_1)**2
-            
-            # Add regularization to encourage smooth paths - reduce number of points
-            reg_loss = 0
-            for t in torch.linspace(0, 1, 5).to(device):  # Reduced from 10 points
-                t_tensor = t.view(1).to(device)
-                dtheta_dt = ode_func(t_tensor, theta_0.clone())
-                reg_loss += torch.norm(dtheta_dt)**2
-            
-            # Combined loss
-            loss = total_loss + 0.1 * endpoint_loss + 0.01 * reg_loss
-            
-            # Backward and optimize
-            loss.backward()
-            optimizer.step()
-            
-            # Update progress bar
-            epoch_loss += loss.item()
-            batch_count += 1
-            train_bar.set_postfix({"Loss": loss.item()})
-            
-            # Clear cache to free memory
-            torch.cuda.empty_cache()
-            gc.collect()
-        
-        avg_epoch_loss = epoch_loss / batch_count
-        print(f"Epoch {epoch+1}/{n_epochs}, Average Loss: {avg_epoch_loss:.4f}")
-    
-    # Find minimum loss point on ODE path
-    ode_func.eval()
+
+    acc_bezier_final = evaluate_model(bezier_curve_model, data_loaders['test'], device)
+    print(f"Bezier Curve (Final State) Accuracy: {acc_bezier_final:.2f}%")
+
+    # --- MLP Curve Training ---
+    print("\nTraining MLP Curve (CurveMLP)...")
+    mlp_curve_path = os.path.join(config['checkpoint_dir'], f"{config['dataset'].lower()}_mlp_curve.pth")
+
+    # Get flat parameter vectors
     with torch.no_grad():
-        # Use fewer grid points to save memory
-        t_grid = torch.linspace(0, 1, 11).to(device)  # Reduced from 21
-        
-        # Set higher tolerance for ODE solver to use less memory
-        theta_grid = odeint(
-            ode_func, 
-            theta_0, 
-            t_grid,
-            method='dopri5',
-            options={'rtol': 1e-2, 'atol': 1e-2}
-        )
-        
-        min_loss = float('inf')
-        best_t = 0.5
-        best_theta = None
-        
-        # Add tqdm progress bar for evaluation
-        eval_bar = tqdm(enumerate(t_grid), total=len(t_grid), desc="Finding best point on curve")
-        for i, t in eval_bar:
-            theta_t = theta_grid[i]
-            nn.utils.vector_to_parameters(theta_t, target_model_ode.parameters())
-            
-            # Evaluate loss on validation set - use smaller subset for evaluation
-            total_loss = 0
-            num_batches = 0
-            for batch_idx, (x, y) in enumerate(data_loaders['test']):
-                # Only use a subset of test data to save memory
-                if batch_idx >= 10:  # Limit evaluation to 10 batches
-                    break
-                    
-                x, y = x.to(device), y.to(device)
-                outputs = target_model_ode(x)
-                loss = F.cross_entropy(outputs, y)
-                total_loss += loss.item()
-                num_batches += 1
-                
-                # Clear memory
-                del x, y, outputs
-                torch.cuda.empty_cache()
-            
-            if num_batches > 0:
-                total_loss /= num_batches
-                
-                if total_loss < min_loss:
-                    min_loss = total_loss
-                    best_t = t.item()
-                    best_theta = theta_t.clone()
-                
-            eval_bar.set_postfix({"t": t.item(), "loss": total_loss, "best_t": best_t})
-            
-            # Clear memory after each evaluation point
-            gc.collect()
-            torch.cuda.empty_cache()
-        
-        print(f"Best ODE point: t={best_t:.3f}, Loss={min_loss:.4f}")
-        
-        # Set target model to best parameters
-        nn.utils.vector_to_parameters(best_theta, target_model_ode.parameters())
-    
-    # Evaluate ODE model - full evaluation on the test set
-    ode_acc = evaluate_model(target_model_ode, data_loaders['test'], device)
-    print(f"\nODE Model Accuracy: {ode_acc:.2f}%")
-    
-    # Now run the standard Bezier curve approach for comparison
-    target_model_bezier = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim
-    ).to(device)
-    
-    bezier_model = curve_ensembling(
-        config=config,
-        models=[model_A, model_B],
-        target_model=target_model_bezier,
-        train_loader=fused_loader,
-        test_loader=data_loaders['test'],
-        device=device,
-        num_classes=config.output_dim,
-        input_dim=config.input_dim
-    )
-    
-    # Evaluate Bezier model
-    bezier_acc = evaluate_model(bezier_model, data_loaders['test'], device)
-    print(f"\nBezier Model Accuracy: {bezier_acc:.2f}%")
-    
-    # Compare results
-    print("\nComparison:")
-    print(f"ODE Model: {ode_acc:.2f}%")
-    print(f"Bezier Model: {bezier_acc:.2f}%")
-    
-    return {
-        'ode_acc': ode_acc,
-        'bezier_acc': bezier_acc,
-        'model_A': model_A,
-        'model_B': model_B,
-        'ode_model': target_model_ode,
-        'bezier_model': bezier_model,
-        'best_t': best_t
-    }
+        w0 = torch.cat([p.view(-1) for p in model_A.parameters()]).detach()
+        w1 = torch.cat([p.view(-1) for p in model_B.parameters()]).detach()
+    num_params = w0.numel()
 
-def test_direct_optimization():
-    """Test direct path optimization for model merging.
-    This approach discretizes the path and directly optimizes each point.
-    """
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-    
-    # Configuration
-    config = CurveConfig(
-        learning_rate=0.05,
-        batch_size=128
-    )
-    
-    # Load data
-    data_path = os.path.join(os.getcwd(), "data")
-    os.makedirs(data_path, exist_ok=True)
-    
-    data_loaders, num_classes = double_loaders(
-        dataset=config.dataset,
-        path=data_path,
-        batch_size=config.batch_size,
-        num_workers=config.num_workers,
-        transform_name="MLPNET",
-        digit=config.test_digit,
-        cifar_class=config.cifar_class,
-    )
-    
-    # Create fused loader for training
-    fused_loader = create_fused_loader(
-        data_loaders['trainA'],
-        data_loaders['trainB'],
-        batch_size=config.batch_size,
-        num_workers=config.num_workers
-    )
-    
-    # Create models
-    model_A = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
+    # Initialize CurveMLP
+    curve_mlp = CurveMLP(
+        num_params=num_params,
+        bias=True,
+        hidden_dim=config['mlp_hidden_dim']
     ).to(device)
     
-    model_B = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
-    ).to(device)
+    # Configure CurveMLP training
+    mlp_train_config = {
+        'epochs': config['mlp_epochs'],
+        'learning_rate': config['mlp_lr'],
+        'momentum': config['optimizer_momentum'], # Use config value
+        'weight_decay': config['optimizer_weight_decay'], # Use config value
+        'batch_size': config['batch_size'],
+        'save_path': mlp_curve_path,
+        'dataset': config['dataset'],
+        'input_dim': input_dim,
+        'hidden_dims': config['hidden_dims'], # Pass base model dims
+        'output_dim': output_dim
+    }
     
-    # Train models if needed
-    print("\nTraining Model A...")
-    train_model(
-        config,
-        model_A,
-        data_loaders['trainA'],
-        data_loaders['test'],
-        epochs=5,
-        device=device,
-        learning_rate=config.model_learning_rate
-    )
-    
-    print("\nTraining Model B...")
-    train_model(
-        config,
-        model_B,
-        data_loaders['trainB'],
-        data_loaders['test'],
-        epochs=5,
-        device=device,
-        learning_rate=config.model_learning_rate
-    )
-    
-    # Parameters as vectors for model endpoints
-    theta_0 = nn.utils.parameters_to_vector(model_A.parameters()).detach()
-    theta_1 = nn.utils.parameters_to_vector(model_B.parameters()).detach()
-    
-    # Number of intermediate points for direct optimization
-    num_intermediate = 3  # 5 total points including endpoints
-    
-    # Create a list of models for each point on the path
-    path_models = [copy.deepcopy(model_A) for _ in range(num_intermediate + 2)]
-    
-    # Fix the endpoints (first and last models)
-    path_models[0] = model_A
-    path_models[-1] = model_B
-    
-    # Initialize intermediate models with linear interpolation
-    for i in range(1, num_intermediate + 1):
-        alpha = i / (num_intermediate + 1)
-        theta_i = (1 - alpha) * theta_0 + alpha * theta_1
-        nn.utils.vector_to_parameters(theta_i, path_models[i].parameters())
-    
-    # Collect parameters to optimize (exclude endpoints)
-    params_to_optimize = []
-    for i in range(1, num_intermediate + 1):
-        params_to_optimize.extend(path_models[i].parameters())
-    
-    # Create optimizer for middle points
-    optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
-    
-    # Training loop
-    num_epochs = 5
-    
-    for epoch in tqdm(range(num_epochs), desc="Training direct path"):
-        # Process batches
-        path_losses = []
-        
-        for x, y in tqdm(fused_loader, desc=f"Epoch {epoch+1}/{num_epochs}", leave=False):
-            x, y = x.to(device), y.to(device)
-            
-            optimizer.zero_grad()
-            
-            # Loss components
-            task_loss = 0
-            smoothness_loss = 0
-            
-            # Task performance loss - all models should perform well
-            for model in path_models:
-                output = model(x)
-                task_loss += F.cross_entropy(output, y)
-            
-            # Path smoothness loss - penalize non-smooth transitions
-            for i in range(1, len(path_models) - 1):
-                theta_prev = nn.utils.parameters_to_vector(path_models[i-1].parameters())
-                theta_curr = nn.utils.parameters_to_vector(path_models[i].parameters())
-                theta_next = nn.utils.parameters_to_vector(path_models[i+1].parameters())
-                
-                # Penalize second derivative (measure of curvature)
-                second_derivative = theta_next - 2*theta_curr + theta_prev
-                smoothness_loss += torch.norm(second_derivative)**2
-            
-            # Total loss with weighting
-            total_loss = task_loss + 0.1 * smoothness_loss
-            
-            # Backward and optimize
-            total_loss.backward()
-            optimizer.step()
-            
-            path_losses.append(total_loss.item())
-        
-        # Print epoch stats
-        avg_loss = sum(path_losses) / len(path_losses)
-        print(f"Epoch {epoch+1}/{num_epochs}, Average Loss: {avg_loss:.4f}")
-    
-    # Find the best model along the path
-    print("Finding the best model on the path...")
-    best_model = None
-    best_acc = -1
-    best_idx = -1
-    
-    # Evaluate each model on the test set
-    for i, model in enumerate(path_models):
-        acc = evaluate_model(model, data_loaders['test'], device)
-        position = i / (len(path_models) - 1)  # Normalized position [0,1]
-        print(f"Model at position {position:.2f}: Test accuracy = {acc:.2f}%")
-        
-        if acc > best_acc:
-            best_acc = acc
-            best_model = copy.deepcopy(model)
-            best_idx = i
-    
-    # Create merged model
-    target_model = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim,
-    ).to(device)
-    
-    # Copy parameters from best model
-    target_model.load_state_dict(best_model.state_dict())
-    
-    best_position = best_idx / (len(path_models) - 1)
-    print(f"\nBest model found at position {best_position:.2f} with accuracy {best_acc:.2f}%")
-    
-    # Compare with Bezier approach
-    target_model_bezier = fcmodel.FCModelBase(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        output_dim=config.output_dim
-    ).to(device)
-    
-    bezier_model = curve_ensembling(
-        config=config,
-        models=[model_A, model_B],
-        target_model=target_model_bezier,
+    history_mlp = curve_mlp.fit(
         train_loader=fused_loader,
         test_loader=data_loaders['test'],
-        device=device,
-        num_classes=config.output_dim,
-        input_dim=config.input_dim
+        config=mlp_train_config, # Pass the dictionary
+        model1=model_A,
+        model2=model_B
     )
-    
-    bezier_acc = evaluate_model(bezier_model, data_loaders['test'], device)
-    
-    # Compare results
-    print("\nComparison:")
-    print(f"Direct path model: {best_acc:.2f}%")
-    print(f"Bezier model: {bezier_acc:.2f}%")
-    
-    return {
-        'direct_acc': best_acc,
-        'bezier_acc': bezier_acc,
-        'model_A': model_A,
-        'model_B': model_B,
-        'direct_model': target_model,
-        'bezier_model': bezier_model,
-        'best_position': best_position
-    }
+
+    # Evaluate the final MLP curve model (typically at t=0.5)
+    curve_mlp.eval()
+    with torch.no_grad():
+        t_mid = torch.tensor([0.5], device=device)
+        w_mid_mlp = curve_mlp(t_mid, w0.to(device), w1.to(device))
+
+    eval_model_mlp = fcmodel.FCModelBase(**model_config).to(device)
+    offset = 0
+    for param in eval_model_mlp.parameters():
+        param_size = param.numel()
+        param.data.copy_(w_mid_mlp[offset:offset + param_size].view(param.size()))
+        offset += param_size
+
+    acc_mlp_mid = evaluate_model(eval_model_mlp, data_loaders['test'], device)
+    print(f"MLP Curve (t=0.5) Accuracy: {acc_mlp_mid:.2f}%")
+
+    print("\n--- Training and Saving Complete ---")
+    print(f"Models and curves saved in: {config['checkpoint_dir']}")
+    print(f"- Model A: {model_A_path}")
+    print(f"- Model B: {model_B_path}")
+    print(f"- Bezier Curve: {bezier_curve_path}")
+    print(f"- MLP Curve: {mlp_curve_path}")
+
 
 if __name__ == "__main__":
-    # Run options
-    run_bezier = False
-    run_ode = False
-    run_direct = True
-    
-    results = {}
-    
-    # Run the original Bezier curve test if enabled
-    #if run_bezier:
-    #    print("\n=== Testing Bezier Curve Merging ===")
-    #    history, bezier_model = test_curve_merging()
-    #    results['bezier'] = history['merged'][-1]
-    
-    # Run the Neural ODE test if enabled
-    if run_ode:
-        print("\n=== Testing Neural ODE Merging ===")
-        ode_results = test_ode_merging()
-        results['ode'] = ode_results['ode_acc']
-        results['ode_t'] = ode_results['best_t']
-    
-    # Run the direct optimization test if enabled
-    if run_direct:
-        print("\n=== Testing Direct Optimization ===")
-        direct_results = test_direct_optimization()
-        results['direct'] = direct_results['direct_acc']
-        results['direct_pos'] = direct_results['best_position']
-        results['bezier_acc'] = direct_results['bezier_acc']
-    
-    # Final comparison
-    print("\n=== Final Comparison ===")
-    if 'bezier' in results:
-        print(f"Bezier Curve Accuracy: {results['bezier']:.2f}%")
-    if 'ode' in results:
-        print(f"Neural ODE Accuracy: {results['ode']:.2f}%")
-        print(f"Neural ODE Best t-value: {results['ode_t']:.3f}")
-    if 'direct' in results:
-        print(f"Direct Optimization Accuracy: {results['direct']:.2f}%")
-        print(f"Direct Optimization Best Position: {results['direct_pos']:.2f}")
-        print(f"Bezier Curve Accuracy (from Direct test): {results['bezier_acc']:.2f}%")
+    parser = argparse.ArgumentParser(description='Train Models and Curves (Bezier & MLP) using YAML Config')
+
+    parser.add_argument('--config', type=str, required=True, help='Path to the YAML configuration file')
+
+    args = parser.parse_args()
+
+    try:
+        with open(args.config, 'r') as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found at {args.config}")
+        exit(1)
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML file: {e}")
+        exit(1)
+
+    print("Loaded configuration:")
+    print(yaml.dump(config, default_flow_style=False))
+
+    torch.manual_seed(config['seed'])
+    np.random.seed(config['seed'])
+    if torch.cuda.is_available() and config['use_cuda']:
+        torch.cuda.manual_seed_all(config['seed'])
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    main(config)

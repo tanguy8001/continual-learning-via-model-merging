@@ -33,10 +33,8 @@ def main():
         epochs=10  # for curve training
     )
     
-    # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    # Create data directory if it doesn't exist
     data_path = os.path.join(os.getcwd(), "data")
     os.makedirs(data_path, exist_ok=True)
 
@@ -50,15 +48,13 @@ def main():
         cifar_class=config.cifar_class,
     )
     
-    # Create fused loader for curve training
     fused_loader = create_fused_loader(
         data_loaders['trainA'],
         data_loaders['trainB'],
         batch_size=config.batch_size,
         num_workers=config.num_workers
     )
-    
-    # Initialize models
+
     model_A = fcmodel.FCModelBase(
         input_dim=config.input_dim,
         hidden_dims=config.hidden_dims,
@@ -70,7 +66,6 @@ def main():
         output_dim=config.num_classes,
     ).to(device)
     
-    # Check if models exist and load them if they do
     model_A_path = f"checkpoints/{config.dataset.lower()}_model_A.pth"
     model_B_path = f"checkpoints/{config.dataset.lower()}_model_B.pth"
     
@@ -79,7 +74,6 @@ def main():
         model_A.load_state_dict(torch.load(model_A_path))
         model_B.load_state_dict(torch.load(model_B_path))
     else:
-        # Train models on different data splits
         print("Training Model A...")
         train_model(config, model_A, data_loaders['trainA'], data_loaders['test'], epochs=config.model_epochs, device=device)
         print("Training Model B...")

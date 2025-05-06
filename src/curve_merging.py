@@ -18,117 +18,51 @@ from CL.Eval import evaluate_task_accuracies
 from CL.Data import get_task_data_with_labels
 import logging
 
+def train_model(config, model, train_loader, test_loader, epochs, device, learning_rate=None):
+    """Generic training function for a model."""
+    model.train()
+    lr = learning_rate if learning_rate is not None else config['learning_rate']
+    momentum = config['optimizer_momentum']
+    weight_decay = config['optimizer_weight_decay']
 
-class CurveFusion:
+    optimizer_type = config['optimizer'].upper()
 
-    def __init__(self, args, base_models, target_model, data):
-        self.args = args
-        self.base_models = base_models
-        self.target_model = target_model
-        self.data = data
+    print(f"Optimizer: {optimizer_type}, LR: {lr}, Momentum: {momentum}, Weight Decay: {weight_decay}")
 
-    def fuse(self):
-        '''
-        Directly modifies the target_model with its new weights.
-        '''
+    if optimizer_type == 'ADAM':
+         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    elif optimizer_type == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    else:
+        raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
 
-        logging.info("Starting curve model fusion")
-        
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        for model in self.base_models:
-            model.to(device)
-        #self.target_model.to(device)
-        #if self.data is not None:
-        #    self.data = self.data.cuda()
-
-        self.target_model = curve_ensembling(
-            config=CurveConfig(),
-            models=self.base_models,
-            target_model=self.target_model,
-            train_loader=self.data['train'],
-            test_loader=self.data['test'],
-            device=device,
-            num_classes=self.target_model.num_classes,
-            input_dim=self.target_model.input_dim,
-        ).to(device)
-
-        logging.info('Curve model fusion completed.')
-
-@dataclass
-class CurveConfig:
-    """Configuration for curve merging parameters."""
-    base_dir: Path = Path.cwd()
-    transform: str = "MLPNET"
-    model: str = "FCModel"
-    dataset: str = "MNIST"
-    #"CIFAR10"
-    input_dim: int = 3072 if dataset == "CIFAR10" else 784
-    hidden_dims: List[int] = field(default_factory=lambda: [400, 200, 100])
-    #hidden_dims: List[int] = field(default_factory=lambda: [800, 400, 200])
-    #hidden_dims: List[int] = field(default_factory=lambda: [1024, 512, 256])
-    output_dim: int = 10
-    epochs: int = 10 # epochs for the curve training, not models!
-    model_epochs: int = 10
-    model_learning_rate: float = 0.007
-    learning_rate: float = 0.07
-    weight_decay: float = 5e-4
-    momentum: float = 0.9
-    num_classes: int = 10
-    num_bends: int = 3
-    num_workers: int = 2
-    curve: str = "Bezier"
-    num_points: int = 61
-    batch_size: int = 128
-    grid_points: int = 21
-    num_workers: int = 1
-    fix_start: bool = True
-    fix_end: bool = True
-    cifar_class: str = "dog"
-    test_digit: int = 4
-
-
-def train_model(
-    config: CurveConfig,
-    model: nn.Module,
-    train_loader: DataLoader,
-    test_loader: DataLoader,
-    epochs: int = 10,
-    device: str = "cpu",
-    learning_rate: float = 0.07
-) -> None:
-    """
-    Train a model using SGD optimizer and cross-entropy loss.
-    
-    Args:
-        model: Neural network model to train
-        train_loader: DataLoader for training data
-        test_loader: DataLoader for test data
-        epochs: Number of training epochs
-        device: Device to train on ('cpu' or 'cuda')
-        learning_rate: Learning rate for SGD optimizer
-    """
-    #print(f"Learning rate used: {learning_rate}")
-    model = model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(
-        filter(lambda param: param.requires_grad, model.parameters()),
-        momentum=config.momentum,
-        lr=learning_rate, 
-        weight_decay=config.weight_decay if config.curve is None else 0.0
-    )
-    
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=epochs//3, gamma=0.1)
+
     for epoch in range(epochs):
         model.train()
-        for inputs, targets in train_loader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            lr = learning_rate_schedule(config.learning_rate, epoch, config.epochs)
-            adjust_learning_rate(optimizer, lr)
+        running_loss = 0.0
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+        for i, (inputs, labels) in enumerate(pbar):
+            inputs, labels = inputs.to(device), labels.to(device)
+
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+
+            running_loss += loss.item()
+            pbar.set_postfix({'loss': running_loss / (i + 1)})
+
+        scheduler.step()
+
+        if test_loader:
+            test_acc = evaluate_model(model, test_loader, device)
+            print(f"Epoch {epoch+1}/{epochs}, Test Accuracy: {test_acc:.2f}%")
+            model.train()
+
+    print('Finished Training')
 
 def learning_rate_schedule(base_lr, epoch, total_epochs):
     alpha = epoch / total_epochs
@@ -156,7 +90,7 @@ def copy_model_mlpnet(model: nn.Module) -> nn.Module:
 
 
 def curve_ensembling(
-    config: CurveConfig,
+    config: dict,
     models: List[nn.Module],
     target_model: nn.Module,
     train_loader: DataLoader,
@@ -183,40 +117,64 @@ def curve_ensembling(
     Returns:
         Merged model
     """
-    architecture = getattr(mods, config.model)
-    architecture.kwargs['input_dim'] = config.input_dim
-    architecture.kwargs['hidden_dims'] = config.hidden_dims
-    architecture.kwargs['output_dim'] = config.output_dim
-    curve = getattr(curves, config.curve)
+    model_name = config['model']
+    architecture_builder = getattr(mods, model_name)
+
+    arch_kwargs = {
+        'input_dim': input_dim,
+        'hidden_dims': config['hidden_dims'],
+        'output_dim': num_classes
+    }
+
+    curve_type_name = config['curve']
+    curve = getattr(curves, curve_type_name)
     
     curve_model = curves.CurveNet(
         num_classes,
         curve,
-        architecture.curve,
-        config.num_bends,
-        config.fix_start,
-        config.fix_end,
-        architecture_kwargs=architecture.kwargs,
+        architecture_builder.curve,
+        config['bezier_num_bends'],
+        config['bezier_fix_start'],
+        config['bezier_fix_end'],
+        architecture_kwargs=arch_kwargs,
     ).to(device)
 
     curve_model.import_base_parameters(models[0], 0)
-    curve_model.import_base_parameters(models[1], config.num_bends - 1)
+    curve_model.import_base_parameters(models[1], config['bezier_num_bends'] - 1)
     
     # Train the curve model
-    train_model(config, curve_model, train_loader, test_loader, learning_rate=config.learning_rate, epochs=config.epochs)
-    #model_path = "/home/tdieudonne/dl3/src/checkpoints"
-    #final_save_path = os.path.join(model_path, 'final_curve_model.pth')
-    #save_model(curve_model, config, config.epochs, -1, -1, final_save_path)
-    
-    ## Create merged model
-    #merged_model = architecture.base(
-    #    input_dim=input_dim, 
-    #    num_classes=num_classes, 
-    #    **architecture.kwargs
-    #).to(device)
+    train_model(
+        config=config,
+        model=curve_model,
+        train_loader=train_loader,
+        test_loader=test_loader,
+        epochs=config['bezier_epochs'],
+        learning_rate=config['bezier_lr'],
+        device=device
+    )
+    curve_ckpt_path = config.get('curve_checkpoint_path')
+    if curve_ckpt_path:
+        curve_net_config = {
+            'input_dim': input_dim,
+            'hidden_dims': config['hidden_dims'],
+            'output_dim': num_classes,
+            'num_bends': config['bezier_num_bends'],
+            'curve_type': config['curve'],
+            'base_model': config['model'],
+            'fix_start': config['bezier_fix_start'],
+            'fix_end': config['bezier_fix_end']
+        }
+        checkpoint = {
+            'model_state_dict': curve_model.state_dict(),
+            'config': curve_net_config
+        }
+        os.makedirs(os.path.dirname(curve_ckpt_path), exist_ok=True)
+        torch.save(checkpoint, curve_ckpt_path)
+        print(f"CurveNet checkpoint saved to {curve_ckpt_path}")
     
     # Sample weights from middle of curve
-    steps = np.linspace(0.0, 1.0, config.num_points)
+    num_points_sampling = config['bezier_num_points']
+    steps = np.linspace(0.0, 1.0, num_points_sampling)
     middle_step = steps[len(steps) // 2]
     fusion_weights = curve_model.weights(torch.tensor([middle_step]))
     
@@ -224,15 +182,10 @@ def curve_ensembling(
     offset = 0
     for parameter in target_model.parameters():
         size = np.prod(parameter.size())
-        value = fusion_weights[offset:offset + size].reshape(parameter.size())
-        parameter.data.copy_(torch.from_numpy(value))
+        value_tensor = fusion_weights[offset:offset + size].reshape(parameter.size())
+        parameter.data.copy_(torch.from_numpy(value_tensor))
         offset += size
 
-    #model_path = "/home/tdieudonne/dl3/src/checkpoints"
-    #final_save_path = os.path.join(model_path, 'final_curve_fusion_model.pth')
-    #config = CurveConfig()
-    #save_model(target_model, config, config.epochs, val_acc, test_acc, final_save_path)
-    
     return target_model
 
 
@@ -242,7 +195,7 @@ def train_merging_curve(
     device: str = "cpu",
     num_classes: int = 10,
     input_dim: int = 784,
-    config: Optional[CurveConfig] = None
+    config: Optional[dict] = None
 ) -> Tuple[nn.Module, List[float]]:
     """
     Train sequential model with curve merging for continual learning.
@@ -263,7 +216,7 @@ def train_merging_curve(
     old_model = None
     task_accuracies = []
     
-    config = config or CurveConfig()
+    config = config or {}
 
     while True:
         train_loader, test_loader = seq_data.get_task_data()
@@ -271,11 +224,25 @@ def train_merging_curve(
 
         if current_task == 0:
             # First task: normal training
-            train_model(config, model, train_loader, test_loader, epochs=1, device=device)
+            train_model(
+                config=config, 
+                model=model, 
+                train_loader=train_loader, 
+                test_loader=test_loader, 
+                epochs=1,
+                device=device
+            )
             old_model = copy_model_mlpnet(model)
         else:
             # Subsequent tasks: train and merge
-            train_model(config, model, train_loader, test_loader, epochs=1, device=device)
+            train_model(
+                config=config, 
+                model=model, 
+                train_loader=train_loader, 
+                test_loader=test_loader, 
+                epochs=1,
+                device=device
+            )
             
             # Merge models using curve ensembling
             models = [old_model.to(device), model.to(device)]

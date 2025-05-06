@@ -1,0 +1,35 @@
+{
+  "os": "Windows-11-10.0.26100-SP0",
+  "python": "CPython 3.12.1",
+  "startedAt": "2025-05-04T23:04:20.664812Z",
+  "args": [
+    "--config",
+    "config.yaml"
+  ],
+  "program": "C:\\Users\\tangu\\OneDrive\\Documents\\ETHZ\\Deep Learning\\continual-learning-via-model-merging\\src\\test_curve_merging.py",
+  "codePath": "src\\test_curve_merging.py",
+  "git": {
+    "remote": "https://github.com/tanguy8001/continual-learning-via-model-merging.git",
+    "commit": "2aff649def82d683e38a64d3f2b3e9b20cc04b3c"
+  },
+  "email": "tdieudonne@student.ethz.ch",
+  "root": "C:\\Users\\tangu\\OneDrive\\Documents\\ETHZ\\Deep Learning\\continual-learning-via-model-merging\\src",
+  "host": "BOOK-V7FLIP24LT",
+  "executable": "C:\\Users\\tangu\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "codePathLocal": "test_curve_merging.py",
+  "cpu_count": 12,
+  "cpu_count_logical": 16,
+  "disk": {
+    "/": {
+      "total": "490633949184",
+      "used": "358726066176"
+    }
+  },
+  "memory": {
+    "total": "16774193152"
+  },
+  "cpu": {
+    "count": 12,
+    "countLogical": 16
+  }
+}
