@@ -15,10 +15,10 @@ python src/plane.py \
 	--output_dim 10 \
 	--seed "43" \
 	--gpu_ids '0' \
-	--init_start "/home/tdieudonne/dl3/src/checkpoints/model_A/final_model.pth" \
-	--init_end "/home/tdieudonne/dl3/src/checkpoints/model_B/final_model.pth" \
-	--fused_model_path "/home/tdieudonne/dl3/src/checkpoints/final_curve_fusion_model.pth" \
-	--curve_ckpt "/home/tdieudonne/dl3/src/checkpoints/final_curve_model.pth" \
+	--init_start "/work/courses/3dv/24/clmm/src/checkpoints/mnist_model_A.pth" \
+	--init_end "/work/courses/3dv/24/clmm/src/checkpoints/mnist_model_B.pth" \
+	--fused_model_path "/work/courses/3dv/24/clmm/src/checkpoints/mnist_bezier_curve.pth" \
+	--curve_ckpt "/work/courses/3dv/24/clmm/src/checkpoints/mnist_bezier_curve.pth" \
 	--num_bends 3 \
 	--curve="Bezier" \
     --grid_points 21 \
