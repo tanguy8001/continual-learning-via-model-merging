@@ -31,6 +31,7 @@ class CurveConfigMLP:
     learning_rate: float
     momentum: float
     epochs: int 
+    gradient_clipping: int = False
     hidden_dims: List[int] = field(default_factory=lambda: [400,200,100])
     weight_decay: float = 5e-4
 
@@ -45,6 +46,7 @@ class ModelToMergeConfig:
     weight_decay: float = 5e-4
     epochs: int = 10
     learning_rate: float = 0.07
+    momentum: float = 0.9
 
 
 @dataclass
@@ -154,10 +156,13 @@ class CurveMLP(Module):
             crit = nn.CrossEntropyLoss()
 
             # prepare weights once
-            flat1 = parameters_to_vector(model1.parameters())
-            flat2 = parameters_to_vector(model2.parameters())
-            specs = [(n, p.numel()) for n, p in model1.named_parameters()]
+            flat1 = parameters_to_vector(model1.parameters()).detach()
+            flat2 = parameters_to_vector(model2.parameters()).detach()
+            print("  w0  min/max:", flat1.min().item(), flat1.max().item())
+            print("  w1  min/max:", flat2.min().item(), flat2.max().item())
 
+            specs = [(n, p.numel()) for n, p in model1.named_parameters()]
+            
 
             for epoch in range(cfg.epochs):
                 tot_loss = tot_corr = tot_samples = 0
@@ -165,7 +170,12 @@ class CurveMLP(Module):
                     x, y = x.to(device), y.to(device)
                     opt.zero_grad()
                     loss = 0.0
-                    for t in cfg.interpolation_points:
+                    
+                    interpolationPoints = cfg.interpolation_points 
+                    if cfg.interpolation_type is InterpolationType.DYNAMIC: 
+                        interpolationPoints = [random.random() for _ in range(5)]
+
+                    for t in interpolationPoints: 
                         w_interp = self(t, flat1, flat2)
                         state = build_state_dict(w_interp, specs, model1)
                         out   = functional_call(model1, state, (x,))
@@ -173,8 +183,12 @@ class CurveMLP(Module):
                         _, pred = out.max(1)
                         tot_corr += pred.eq(y).sum().item()
                         tot_samples += y.size(0)
+        
                     loss = loss / len(cfg.interpolation_points)
-                    loss.backward(); opt.step()
+                    loss.backward(); 
+                    if cfg.gradient_clipping == True:
+                        torch.nn.utils.clip_grad_norm_(self.mlp.parameters(), max_norm=1.0)
+                    opt.step()
                     tot_loss += loss.item()
                     if step % 50 == 0:
                         print(f"E{epoch} S{step} L{loss:.4f}")

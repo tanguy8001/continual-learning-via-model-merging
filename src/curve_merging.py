@@ -112,7 +112,7 @@ def train_model(
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(
         filter(lambda param: param.requires_grad, model.parameters()),
-        momentum=config.curve.momentum,
+        momentum=config.momentum,
         lr=learning_rate, 
         weight_decay=config.weight_decay
     )
