@@ -59,7 +59,63 @@ class ExperimentConfig:
     model: ModelToMergeConfig 
     buffer: TrainingBufferConfig
 
- 
+def split_classes_with_sampled_fraction(
+    dataset,
+    class_fraction: float = 0.5,
+    sample_fraction: float = 0.8,
+    shuffle: bool = True,
+    seed: int = None
+):
+    """
+    1) Partition classes into two groups: A gets the first `class_fraction` of classes,
+       B gets the rest (so here class_fraction=0.5 → half/half).
+    2) From each class in each group, take `sample_fraction` of its indices (e.g. 0.8 → 80%).
+
+    Returns:
+        subset_A, subset_B : Subsets containing 80% of group-A classes and 80% of group-B classes.
+    """
+    labels = getattr(dataset, "targets", None) or getattr(dataset, "labels", None)
+    if labels is None:
+        raise ValueError("Dataset must have .targets or .labels")
+    labels = np.array(labels)
+
+    classes = np.unique(labels)
+    rng = np.random.RandomState(seed)
+    if shuffle:
+        rng.shuffle(classes)
+
+    n_A = int(len(classes) * class_fraction)
+    classes_A = classes[:n_A]
+    classes_B = classes[n_A:]
+
+    # 4. sample indices per class
+    idx_A, idx_B = [], []
+    for cls in classes_A:
+        cls_idx = np.where(labels == cls)[0]
+        if shuffle:
+            rng.shuffle(cls_idx)
+        cut = int(len(cls_idx) * sample_fraction)
+        idx_A.extend(cls_idx[:cut])
+        idx_B.extend(cls_idx[cut:])
+    for cls in classes_B:
+        cls_idx = np.where(labels == cls)[0]
+        if shuffle:
+            rng.shuffle(cls_idx)
+        cut = int(len(cls_idx) * sample_fraction)
+        idx_B.extend(cls_idx[:cut])
+        idx_A.extend(cls_idx[cut:])
+
+    # 5. final shuffle
+    if shuffle:
+        rng.shuffle(idx_A)
+        rng.shuffle(idx_B)
+
+    # 6. build Subsets
+    subset_A = Subset(dataset, idx_A)
+    subset_B = Subset(dataset, idx_B)
+    return subset_A, subset_B
+
+
 def stratified_split(dataset, percentage: float, seed: int = 42):
     """
     Splits `dataset` into (subset_a, subset_b) so that each class in `dataset`
