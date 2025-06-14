@@ -89,7 +89,7 @@ def main():
     )
 
     # Create a training buffer for curve fitting (stratified split)
-    buffer_subset, _ = stratified_split(full_train, cfg.buffer.percentage)
+    buffer_subset, _:= stratified_split(full_train, cfg.buffer.percentage)
     training_buffer = DataLoader(
         buffer_subset,
         batch_size=cfg.model.batch_size,

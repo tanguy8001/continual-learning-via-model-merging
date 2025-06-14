@@ -11,4 +11,8 @@ python src/test_curve_merging_mlp.py \
  --model.input-dim 3072 \
  --model.output-dim 10 \
  --model.hidden-dims 400 200 100 \
- --buffer.percentage 0.8
+ --buffer.percentage 0.4
+
+-----------------
+In the cluster:
+    sbatch --gpus=1 --mem-per-cpu=64g experiment_buffer_size.sh
