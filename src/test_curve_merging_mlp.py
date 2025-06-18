@@ -33,7 +33,7 @@ from curves_MLP import (
     ModelToMergeConfig,
     CurveConfigMLP
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import argparse
 import wandb
 
@@ -44,7 +44,7 @@ def main():
 
     run = wandb.init(entity="Continual_Learning-DAL",
                      project="Model Path Fusion - CurveNet MLP Coeffs",
-                     config=cfg)
+                     config=asdict(cfg))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -89,7 +89,7 @@ def main():
     )
 
     # Create a training buffer for curve fitting (stratified split)
-    buffer_subset, _:= stratified_split(full_train, cfg.buffer.percentage)
+    buffer_subset, _ = stratified_split(full_train, cfg.buffer.percentage)
     training_buffer = DataLoader(
         buffer_subset,
         batch_size=cfg.model.batch_size,
@@ -123,7 +123,7 @@ def main():
     #else:
     print("Training Model A...")
     train_model(
-        cfg.model,
+        cfg.,
         model_A,
         train_loader_A,
         test_loader,
@@ -132,7 +132,7 @@ def main():
     )
     print("Training Model B...")
     train_model(
-        cfg.model,
+        cfg.curve,
         model_B,
         train_loader_B,
         test_loader,

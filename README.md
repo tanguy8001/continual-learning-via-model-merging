@@ -14,5 +14,10 @@ python src/test_curve_merging_mlp.py \
  --buffer.percentage 0.4
 
 -----------------
+Once your local venv is selected, do
+
+pip install -r requirements.txt
+
+
 In the cluster:
     sbatch --gpus=1 --mem-per-cpu=64g experiment_buffer_size.sh

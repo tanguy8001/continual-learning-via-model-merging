@@ -17,6 +17,7 @@ import curves
 from CL.Eval import evaluate_task_accuracies
 from CL.Data import get_task_data_with_labels
 import logging
+from curves_MLP import ModelToMergeConfig
 
 class CurveFusion:
 
@@ -88,7 +89,7 @@ class CurveConfig:
 
 
 def train_model(
-    config: CurveConfig,
+    config: ModelToMergeConfig,
     model: nn.Module,
     train_loader: DataLoader,
     test_loader: DataLoader,

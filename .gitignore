@@ -79,3 +79,5 @@ target/
 wandb/
 
 /wandb
+SLURM/*.out
+.venv/
