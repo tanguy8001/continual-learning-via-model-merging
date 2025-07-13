@@ -42,28 +42,51 @@ def main():
     # Load experiment configuration
     cfg: ExperimentConfig = tyro.cli(ExperimentConfig)
 
-    run = wandb.init(entity="Continual_Learning-DAL",
-                     project="Model Path Fusion - CurveNet MLP Coeffs",
-                     config=asdict(cfg))
+    # Comment out WandB initialization to avoid authentication issues
+    # run = wandb.init(entity="Continual_Learning-DAL",
+    #                  project="Model Path Fusion - CurveNet MLP Coeffs",
+    #                  config=asdict(cfg))
+    run = None
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-    
+
+    dataset = "MNIST"
+    #dataset = "CIFAR10"
+
+    if dataset == "MNIST":
+        # MNIST is 28x28 grayscale. Normalization values are different.
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(28, padding=4), # Adjusted for 28x28 images
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std (1 channel)
+        ])
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std (1 channel)
+        ])
+
+        full_train = datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
+        test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=transform_test)
+
+    if dataset == "CIFAR10":
     # Data transformations
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
     
-    # Load CIFAR10 dataset
-    full_train = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-    test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+        # Load CIFAR10 dataset
+
+        full_train = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+        test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 
     #80%/20% for A/B for first half of the classes and 80%/20% for B/A for second half of the classes
     train_subset_A, train_subset_B = split_classes_with_sampled_fraction(full_train)
@@ -123,7 +146,7 @@ def main():
     #else:
     print("Training Model A...")
     train_model(
-        cfg.,
+        cfg.model,
         model_A,
         train_loader_A,
         test_loader,
@@ -132,15 +155,31 @@ def main():
     )
     print("Training Model B...")
     train_model(
-        cfg.curve,
+        cfg.model,
         model_B,
         train_loader_B,
         test_loader,
         epochs=cfg.model.model_epochs,
         device=device
     )
-    torch.save(model_A.state_dict(), path_A)
-    torch.save(model_B.state_dict(), path_B)
+    # Save model A
+    torch.save({
+        'model_state_dict': model_A.state_dict(),
+        'config': {
+            'input_dim': cfg.model.input_dim,
+            'hidden_dims': cfg.model.hidden_dims,
+            'num_classes': cfg.model.output_dim
+        }
+    }, path_A)
+    # Save model B
+    torch.save({
+        'model_state_dict': model_B.state_dict(),
+        'config': {
+            'input_dim': cfg.model.input_dim,
+            'hidden_dims': cfg.model.hidden_dims,
+            'num_classes': cfg.model.output_dim
+        }
+    }, path_B)
     print("Models saved to checkpoints directory")
 
     # Evaluate individual models
@@ -154,15 +193,31 @@ def main():
     W1 = torch.cat([p.view(-1) for p in model_A.parameters()])
     W2 = torch.cat([p.view(-1) for p in model_B.parameters()])
 
+    print(f"Model parameter count: {W1.numel()}")
+    if cfg.curve.t_only_mode:
+        if cfg.curve.use_positional_encoding:
+            print(f"Using t-only mode with positional encoding: MLP input dimension = {cfg.curve.pos_encoding_dim}")
+        else:
+            print(f"Using t-only mode: MLP input dimension = 1 (reduced from {W1.numel() * 2 + 1})")
+    else:
+        if cfg.curve.use_positional_encoding:
+            print(f"Using full mode with positional encoding: MLP input dimension = {W1.numel() * 2 + cfg.curve.pos_encoding_dim}")
+        else:
+            print(f"Using full mode: MLP input dimension = {W1.numel() * 2 + 1}")
+
     curve_mlp = CurveMLP(
         in_features=W1.numel() * 2,
         out_features=W1.numel(),
         bias=True,
-        hidden_dim=cfg.curve.hidden_dim
+        hidden_dim=cfg.curve.hidden_dim,
+        t_only_mode=cfg.curve.t_only_mode,
+        use_positional_encoding=cfg.curve.use_positional_encoding,
+        pos_encoding_dim=cfg.curve.pos_encoding_dim,
+        pos_encoding_freq=cfg.curve.pos_encoding_freq
     ).to(device)
 
     # Fit CurveMLP with the training buffer
-    curve_mlp.fit(
+    final_loss, final_acc = curve_mlp.fit(
         training_buffer,
         test_loader,
         cfg.curve,
@@ -170,10 +225,57 @@ def main():
         model_B
     )
 
+    # Compute and display the implicit dimensionality of the curve
+    print("\n" + "="*50)
+    print("IMPLICIT DIMENSIONALITY OF THE CURVE")
+    print("="*50)
+    n_components, explained_variance = curve_mlp.evaluate_curve_dimensionality(
+        model_A, model_B, num_points=1000, plot=True, variance_threshold=0.99
+    )
+    print(f"Number of principal components to explain 99% variance: {n_components}")
+    print("="*50)
+    # wandb.log({"implicit_dimensionality": n_components})
+
     # Save final models
-    torch.save(model_A.state_dict(), path_A)
-    torch.save(model_B.state_dict(), path_B)
+    torch.save({
+        'model_state_dict': model_A.state_dict(),
+        'config': {
+            'input_dim': cfg.model.input_dim,
+            'hidden_dims': cfg.model.hidden_dims,
+            'num_classes': cfg.model.output_dim
+        }
+    }, path_A)
+    torch.save({
+        'model_state_dict': model_B.state_dict(),
+        'config': {
+            'input_dim': cfg.model.input_dim,
+            'hidden_dims': cfg.model.hidden_dims,
+            'num_classes': cfg.model.output_dim
+        }
+    }, path_B)
     print("Models and merged outputs saved to checkpoints directory")
+    
+    # Print final summary
+    print("\n" + "="*50)
+    print("FINAL RESULTS SUMMARY")
+    print("="*50)
+    print(f"Model A accuracy: {acc_A:.2f}%")
+    print(f"Model B accuracy: {acc_B:.2f}%")
+    print(f"Merged model accuracy (t=0.5): {final_acc:.2f}%")
+    print(f"Merged model loss: {final_loss:.4f}")
+    print("="*50)
+    
+    # Evaluate the curve at different interpolation points
+    print("\n" + "="*50)
+    print("CURVE EVALUATION AT DIFFERENT INTERPOLATION POINTS")
+    print("="*50)
+    curve_results = curve_mlp.evaluate_curve(test_loader, model_A, model_B)
+    
+    # Log curve results to wandb
+    # for t_key, metrics in curve_results.items():
+    #     wandb.log({f"{t_key}_accuracy": metrics["accuracy"], f"{t_key}_loss": metrics["loss"]})
+    
+    print("="*50)
 
 if __name__ == "__main__":
     main()

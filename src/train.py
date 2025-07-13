@@ -2,6 +2,9 @@
 The main training and fusion script. To perform a single training, simply set SEEDS to a single seed of your choice.
 '''
 
+#Modification test 5
+
+
 import os
 import csv
 import torch
@@ -23,7 +26,7 @@ from curve_merging import (
     curve_ensembling,
     CurveConfig
 )
-from fuse_models import get_activation_data
+from fuse_models import get_activation_data, get_model
 
 SEEDS = range(1)
 
@@ -95,7 +98,7 @@ def test_curve_merging_with_seeds():
 
     args = parser.parse_args()
     """Main function to perform training and merging with multiple seeds."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
     # Configuration
